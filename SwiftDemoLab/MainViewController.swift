@@ -7,7 +7,15 @@
 
 import UIKit
 
-class ViewController: UIViewController {
+#if DEBUG
+extension UIViewController {
+    @objc func injected() {
+        viewDidLoad()
+    }
+}
+#endif
+
+class MainViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
