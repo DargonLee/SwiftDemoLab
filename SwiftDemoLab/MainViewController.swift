@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import Inject
 
 #if DEBUG
 extension UIViewController {
@@ -22,6 +23,10 @@ class MainViewController: UIViewController {
         // Do any additional setup after loading the view.
     }
 
-
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        let viewController = Inject.ViewControllerHost(TestViewController())
+        navigationController?.pushViewController(viewController, animated: true)
+    }
+    
 }
 
