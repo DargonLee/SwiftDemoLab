@@ -1,7 +1,7 @@
 ---
-description: 开发要求
+description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 # 技术栈说明
 
@@ -9,3 +9,6 @@ alwaysApply: false
 
 - 主要语言：Swift
 - Swift 代码的界面布局主要采用 [SnapKit](mdc:https:/github.com/SnapKit/it) 进行自动布局
+- UI元素使用lazy方式
+- 创建UI使用setupUI()
+- 给UI布局使用setupConstraints()

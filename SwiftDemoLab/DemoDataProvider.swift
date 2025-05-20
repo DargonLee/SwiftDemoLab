@@ -22,8 +22,8 @@ struct DemoDataProvider {
     static func allSections() -> [DemoSection] {
         return [
             DemoSection(title: "功能演示", items: [
-                DemoItem(title: "测试页面", desc: "TestViewController 示例", controllerType: TestViewController.self)
-                // 这里可以继续添加更多 Demo
+                DemoItem(title: "测试页面", desc: "TestViewController 示例", controllerType: TestViewController.self),
+                DemoItem(title: "字体动画", desc: "字体变大或者变小有动画效果", controllerType: FontAnimateViewController.self)
             ])
             // 可以继续添加更多 Section
         ]
