@@ -1,5 +1,5 @@
 ---
-description: 开发技术栈要求
+description: 开发要求
 globs: 
 alwaysApply: false
 ---
@@ -8,4 +8,4 @@ alwaysApply: false
 本项目主要技术栈如下：
 
 - 主要语言：Swift
-- Swift 代码的界面布局主要采用 [SnapKit](https://github.com/SnapKit/it) 进行自动布局
+- Swift 代码的界面布局主要采用 [SnapKit](mdc:https:/github.com/SnapKit/it) 进行自动布局
