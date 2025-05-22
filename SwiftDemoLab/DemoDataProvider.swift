@@ -24,8 +24,11 @@ struct DemoDataProvider {
             DemoSection(title: "功能演示", items: [
                 DemoItem(title: "测试页面", desc: "TestViewController 示例", controllerType: TestViewController.self),
                 DemoItem(title: "字体动画", desc: "字体变大或者变小有动画效果", controllerType: FontAnimateViewController.self)
+            ]),
+            DemoSection(title: "粒子动画", items: [
+                DemoItem(title: "散花", desc: "散花动画示例", controllerType: FlowerEffectViewController.self),
+                DemoItem(title: "烟花", desc: "烟花动画示例", controllerType: FireworksViewController.self),
             ])
-            // 可以继续添加更多 Section
         ]
     }
 }
