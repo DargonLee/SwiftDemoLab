@@ -11,16 +11,19 @@ import SnapKit
 class FlowerEffectViewController: UIViewController {
     
     lazy var scatterButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("散花 ✨", for: .normal)
+        var config = UIButton.Configuration.filled()
+        config.title = "散花 ✨"
+        config.baseBackgroundColor = UIColor.systemBlue.withAlphaComponent(0.8)
+        config.baseForegroundColor = .white
+        config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 25, bottom: 12, trailing: 25)
+
+        let button = UIButton(configuration: config)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 20, weight: .bold)
-        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.8)
-        button.setTitleColor(.white, for: .normal)
         button.layer.cornerRadius = 12
-        button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 25, bottom: 12, right: 25)
         button.addTarget(self, action: #selector(didTapScatterButton), for: .touchUpInside)
         return button
     }()
+
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -133,7 +136,7 @@ class FlowerEffectViewController: UIViewController {
             // 在所有粒子消失后移除发射器层
             // 计算最长可能的生命周期
         let maxLifetime = emitterCells.map { $0.lifetime + $0.lifetimeRange }.max() ?? 3.0
-        DispatchQueue.main.asyncAfter(deadline: .now() + maxLifetime + 0.5) { // 加一点缓冲时间
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(maxLifetime) + 0.5) { // 加一点缓冲时间
             emitterLayer.removeFromSuperlayer()
         }
     }
