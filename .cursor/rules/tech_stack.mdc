@@ -3,9 +3,12 @@ description:
 globs: 
 alwaysApply: true
 ---
-# 技术栈说明
+---
+description: Swift开发最佳实践
+globs: **/*.swift
+---
 
-本项目主要技术栈如下：
+# Swift 规则
 
 - 主要语言：Swift
 - Swift 代码的界面布局主要采用 [SnapKit](mdc:https:/github.com/SnapKit/it) 进行自动布局
