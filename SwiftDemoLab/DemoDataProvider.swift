@@ -30,6 +30,9 @@ struct DemoDataProvider {
             DemoSection(title: "粒子动画", items: [
                 DemoItem(title: "散花", desc: "散花动画示例", controllerType: FlowerEffectViewController.self),
                 DemoItem(title: "烟花", desc: "烟花动画示例", controllerType: FireworksViewController.self),
+            ]),
+            DemoSection(title: "框架使用", items: [
+                DemoItem(title: "HealthKit", desc: "HealthKit的数据同步 Demo", controllerType: HealthKitViewController.self),
             ])
         ]
     }
