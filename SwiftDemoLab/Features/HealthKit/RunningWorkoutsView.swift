@@ -14,43 +14,41 @@ struct RunningWorkoutsView: View {
     @State private var showingAuthorization = false
     
     var body: some View {
-        NavigationView {
-            Group {
-                if dataManager.isLoading {
-                    ProgressView("加载跑步数据中...")
-                } else if let error = dataManager.errorMessage {
-                    VStack {
-                        Text(error)
-                            .foregroundColor(.red)
-                        Button("重试") {
-                            dataManager.fetchRunningWorkouts()
-                        }
+        Group {
+            if dataManager.isLoading {
+                ProgressView("加载跑步数据中...")
+            } else if let error = dataManager.errorMessage {
+                VStack {
+                    Text(error)
+                        .foregroundColor(.red)
+                    Button("重试") {
+                        dataManager.fetchRunningWorkouts()
                     }
-                } else if dataManager.runningWorkouts.isEmpty {
-                    Text("没有找到跑步记录")
-                        .foregroundColor(.secondary)
-                } else {
-                    List(dataManager.runningWorkouts) { workout in
-                        NavigationLink(destination: WorkoutDetailView(workout: workout)) {
-                            WorkoutRowView(workout: workout)
-                        }
+                }
+            } else if dataManager.runningWorkouts.isEmpty {
+                Text("没有找到跑步记录")
+                    .foregroundColor(.secondary)
+            } else {
+                List(dataManager.runningWorkouts) { workout in
+                    NavigationLink(destination: WorkoutDetailView(workout: workout)) {
+                        WorkoutRowView(workout: workout)
                     }
                 }
             }
-            .navigationTitle("跑步记录")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: refreshData) {
-                        Image(systemName: "arrow.clockwise")
-                    }
+        }
+        .navigationTitle("跑步记录")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: refreshData) {
+                    Image(systemName: "arrow.clockwise")
                 }
             }
-            .onAppear {
-                checkAuthorization()
-            }
-            .sheet(isPresented: $showingAuthorization) {
-                AuthorizationView(dataManager: dataManager)
-            }
+        }
+        .onAppear {
+            checkAuthorization()
+        }
+        .sheet(isPresented: $showingAuthorization) {
+            AuthorizationView(dataManager: dataManager)
         }
     }
     
