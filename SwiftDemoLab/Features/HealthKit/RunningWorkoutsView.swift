@@ -98,11 +98,17 @@ struct AuthorizationView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .padding()
+            .tint(.blue)
+            .controlSize(.regular)
+            .font(.system(size: 16, weight: .semibold))
             
             Button("稍后再说") {
                 presentationMode.wrappedValue.dismiss()
             }
+            .buttonStyle(.bordered)
+            .tint(.gray)
+            .controlSize(.regular)
+            .font(.system(size: 16))
         }
         .padding()
     }

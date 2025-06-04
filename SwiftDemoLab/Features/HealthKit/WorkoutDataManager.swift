@@ -27,26 +27,19 @@ class WorkoutDataManager: NSObject, ObservableObject {
         }
         
         // 定义需要读取的数据类型
-        let typesToRead: Set<HKObjectType>
+        var typesToRead: Set<HKObjectType> = [
+            HKObjectType.workoutType(),
+            HKSeriesType.workoutRoute(),
+            HKObjectType.quantityType(forIdentifier: .heartRate)!,
+            HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning)!,
+            HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
+            HKObjectType.quantityType(forIdentifier: .stepCount)!
+        ]
+
         if #available(iOS 16.0, *) {
-            typesToRead = [
-                HKObjectType.workoutType(),
-                HKSeriesType.workoutRoute(),
-                HKObjectType.quantityType(forIdentifier: .heartRate)!,
-                HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning)!,
-                HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
-                HKObjectType.quantityType(forIdentifier: .runningSpeed)!,
-                HKObjectType.quantityType(forIdentifier: .stepCount)!
-            ]
-        } else {
-            typesToRead = [
-                HKObjectType.workoutType(),
-                HKSeriesType.workoutRoute(),
-                HKObjectType.quantityType(forIdentifier: .heartRate)!,
-                HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning)!,
-                HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
-                HKObjectType.quantityType(forIdentifier: .stepCount)!
-            ]
+            if let runningSpeed = HKObjectType.quantityType(forIdentifier: .runningSpeed) {
+                typesToRead.insert(runningSpeed)
+            }
         }
         
         // 请求权限
