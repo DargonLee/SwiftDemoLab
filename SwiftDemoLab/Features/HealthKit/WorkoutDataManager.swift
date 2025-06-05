@@ -8,21 +8,35 @@
 import HealthKit
 import CoreLocation
 import SwiftUI
+import Combine
 
 class WorkoutDataManager: NSObject, ObservableObject {
+    // MARK: - Properties
     let healthStore = HKHealthStore()
     
-    // 存储获取的跑步数据
+    // 发布的属性
     @Published var runningWorkouts: [RunningWorkout] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     
-    // 请求健康数据权限
+    // 取消标记用于管理异步任务
+    private var cancellables = Set<AnyCancellable>()
+    
+    // MARK: - 授权管理
+    
+    /// 检查HealthKit权限状态
+    func checkAuthorizationStatus() -> HKAuthorizationStatus {
+        return healthStore.authorizationStatus(for: HKObjectType.workoutType())
+    }
+    
+    /// 请求健康数据权限
     func requestAuthorization(completion: @escaping (Bool) -> Void) {
         // 检查设备是否支持HealthKit
         guard HKHealthStore.isHealthDataAvailable() else {
-            errorMessage = "此设备不支持HealthKit"
-            completion(false)
+            DispatchQueue.main.async {
+                self.errorMessage = "此设备不支持HealthKit"
+                completion(false)
+            }
             return
         }
         
@@ -32,6 +46,7 @@ class WorkoutDataManager: NSObject, ObservableObject {
             HKSeriesType.workoutRoute(),
             HKObjectType.quantityType(forIdentifier: .heartRate)!,
             HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning)!,
+            HKObjectType.quantityType(forIdentifier: .distanceCycling)!,
             HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
             HKObjectType.quantityType(forIdentifier: .stepCount)!
         ]
@@ -39,6 +54,12 @@ class WorkoutDataManager: NSObject, ObservableObject {
         if #available(iOS 16.0, *) {
             if let runningSpeed = HKObjectType.quantityType(forIdentifier: .runningSpeed) {
                 typesToRead.insert(runningSpeed)
+            }
+        }
+        
+        if #available(iOS 17.0, *) {
+            if let cyclingSpeed = HKObjectType.quantityType(forIdentifier: .cyclingSpeed) {
+                typesToRead.insert(cyclingSpeed)
             }
         }
         
@@ -61,9 +82,13 @@ class WorkoutDataManager: NSObject, ObservableObject {
         }
     }
     
-    // 获取所有跑步类型的健身记录
+    // MARK: - 数据获取
+    
+    /// 获取所有跑步类型的健身记录
     func fetchRunningWorkouts() {
+        // 重置状态
         isLoading = true
+        errorMessage = nil
         runningWorkouts.removeAll()
         
         // 创建跑步类型谓词
@@ -94,26 +119,9 @@ class WorkoutDataManager: NSObject, ObservableObject {
                     return
                 }
                 
-                // 处理每条跑步记录
-                let group = DispatchGroup()
-                
-                for workout in workouts {
-                    group.enter()
-                    
-                    // 提取跑步详细信息
-                    self.fetchWorkoutDetails(workout: workout) { details in
-                        DispatchQueue.main.async {
-                            if let details = details {
-                                self.runningWorkouts.append(details)
-                            }
-                            group.leave()
-                        }
-                    }
-                }
-                
-                group.notify(queue: .main) {
-                    // 所有数据获取完成后排序
-                    self.runningWorkouts.sort { $0.startDate > $1.startDate }
+                // 使用异步任务组处理所有工作
+                Task {
+                    await self.processWorkouts(workouts)
                 }
             }
         }
@@ -121,9 +129,24 @@ class WorkoutDataManager: NSObject, ObservableObject {
         healthStore.execute(query)
     }
     
-    // 获取单次跑步的详细信息
-    private func fetchWorkoutDetails(workout: HKWorkout, completion: @escaping (RunningWorkout?) -> Void) {
-        // 收集跑步的所有相关数据
+    /// 异步处理多个跑步记录
+    @MainActor
+    private func processWorkouts(_ workouts: [HKWorkout]) async {
+        var results: [RunningWorkout] = []
+        
+        for workout in workouts {
+            if let details = await fetchWorkoutDetailsAsync(workout: workout) {
+                results.append(details)
+            }
+        }
+        
+        // 所有数据获取完成后排序并更新UI
+        self.runningWorkouts = results.sorted { $0.startDate > $1.startDate }
+    }
+    
+    /// 异步获取单次跑步的详细信息
+    private func fetchWorkoutDetailsAsync(workout: HKWorkout) async -> RunningWorkout? {
+        // 创建基本运动记录
         var runningWorkout = RunningWorkout(
             workout: workout,
             totalDistance: 0,
@@ -133,134 +156,213 @@ class WorkoutDataManager: NSObject, ObservableObject {
             routeLocations: []
         )
         
-        let group = DispatchGroup()
+        // 使用任务组并发获取所有数据
+        async let distance = fetchTotalDistance(for: workout)
+        async let pace = fetchAveragePace(for: workout)
+        async let energy = fetchTotalEnergy(for: workout)
+        async let heartRate = fetchAverageHeartRate(for: workout)
+        async let locations = fetchRouteLocations(for: workout)
         
-        // 1. 获取总距离
-        if let distanceType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) {
-            group.enter()
+        do {
+            // 等待所有请求完成并填充数据
+            runningWorkout.totalDistance = try await distance
+            runningWorkout.averagePace = try await pace
+            runningWorkout.totalEnergyBurned = try await energy
+            runningWorkout.averageHeartRate = try await heartRate
+            runningWorkout.routeLocations = try await locations
+            
+            return runningWorkout
+        } catch {
+            print("获取运动详情失败: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    // MARK: - 详细数据获取方法
+    
+    /// 获取总距离
+    private func fetchTotalDistance(for workout: HKWorkout) async throws -> Double {
+        guard let distanceType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) else {
+            return 0
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
             let distancePredicate = HKQuery.predicateForObjects(from: workout)
             
             let distanceQuery = HKStatisticsQuery(
                 quantityType: distanceType,
                 quantitySamplePredicate: distancePredicate
             ) { (_, result, error) in
-                if let result = result, let sum = result.sumQuantity() {
-                    runningWorkout.totalDistance = sum.doubleValue(for: .meter())
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
                 }
-                group.leave()
+                
+                let distance = result?.sumQuantity()?.doubleValue(for: .meter()) ?? 0
+                continuation.resume(returning: distance)
             }
             healthStore.execute(distanceQuery)
         }
-        
-        // 2. 获取平均配速
-        if #available(iOS 16.0, *) {
-            if let speedType = HKQuantityType.quantityType(forIdentifier: .runningSpeed) {
-                group.enter()
+    }
+    
+    /// 获取平均配速
+    private func fetchAveragePace(for workout: HKWorkout) async throws -> Double {
+        // iOS 16+ 才支持runningSpeed类型
+        if #available(iOS 16.0, *),
+           let speedType = HKQuantityType.quantityType(forIdentifier: .runningSpeed) {
+            return try await withCheckedThrowingContinuation { continuation in
                 let speedPredicate = HKQuery.predicateForObjects(from: workout)
                 
                 let speedQuery = HKStatisticsQuery(
                     quantityType: speedType,
                     quantitySamplePredicate: speedPredicate
                 ) { (_, result, error) in
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    
                     if let result = result, let average = result.averageQuantity() {
                         let metersPerSecond = average.doubleValue(for: .meter().unitDivided(by: .second()))
                         // 转换为分钟/公里 (pace)
-                        runningWorkout.averagePace = metersPerSecond > 0 ? 1000 / (metersPerSecond * 60) : 0
+                        let pace = metersPerSecond > 0 ? 1000 / (metersPerSecond * 60) : 0
+                        continuation.resume(returning: pace)
+                    } else {
+                        continuation.resume(returning: 0)
                     }
-                    group.leave()
                 }
                 healthStore.execute(speedQuery)
             }
+        } else {
+            // 如果不支持runningSpeed，尝试从距离和时间计算
+            let distance = try await fetchTotalDistance(for: workout)
+            let duration = workout.duration
+            
+            // 只有当距离和时间都有效时才计算配速
+            if distance > 0 && duration > 0 {
+                // 转换为分钟/公里
+                return (duration / 60) / (distance / 1000)
+            }
+            return 0
+        }
+    }
+    
+    /// 获取消耗能量
+    private func fetchTotalEnergy(for workout: HKWorkout) async throws -> Double {
+        guard let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else {
+            return 0
         }
         
-        // 3. 获取消耗能量
-        if let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
-            group.enter()
+        return try await withCheckedThrowingContinuation { continuation in
             let energyPredicate = HKQuery.predicateForObjects(from: workout)
             
             let energyQuery = HKStatisticsQuery(
                 quantityType: energyType,
                 quantitySamplePredicate: energyPredicate
             ) { (_, result, error) in
-                if let result = result, let sum = result.sumQuantity() {
-                    runningWorkout.totalEnergyBurned = sum.doubleValue(for: .kilocalorie())
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
                 }
-                group.leave()
+                
+                let energy = result?.sumQuantity()?.doubleValue(for: .kilocalorie()) ?? 0
+                continuation.resume(returning: energy)
             }
             healthStore.execute(energyQuery)
         }
+    }
+    
+    /// 获取平均心率
+    private func fetchAverageHeartRate(for workout: HKWorkout) async throws -> Double {
+        guard let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
+            return 0
+        }
         
-        // 4. 获取平均心率
-        if let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) {
-            group.enter()
+        return try await withCheckedThrowingContinuation { continuation in
             let heartRatePredicate = HKQuery.predicateForObjects(from: workout)
             
             let heartRateQuery = HKStatisticsQuery(
                 quantityType: heartRateType,
                 quantitySamplePredicate: heartRatePredicate
             ) { (_, result, error) in
-                if let result = result, let average = result.averageQuantity() {
-                    runningWorkout.averageHeartRate = average.doubleValue(for: HKUnit.count().unitDivided(by: .minute()))
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
                 }
-                group.leave()
+                
+                let heartRate = result?.averageQuantity()?.doubleValue(for: HKUnit.count().unitDivided(by: .minute())) ?? 0
+                continuation.resume(returning: heartRate)
             }
             healthStore.execute(heartRateQuery)
         }
-        
-        // 5. 获取跑步路线
-        group.enter()
-        fetchRoute(for: workout) { locations in
-            runningWorkout.routeLocations = locations
-            group.leave()
-        }
-        
-        // 所有数据获取完成后返回
-        group.notify(queue: .global()) {
-            completion(runningWorkout)
+    }
+    
+    /// 获取跑步路线位置数据
+    private func fetchRouteLocations(for workout: HKWorkout) async throws -> [CLLocation] {
+        return try await withCheckedThrowingContinuation { continuation in
+            var locations: [CLLocation] = []
+            
+            // 创建路线查询谓词
+            let routePredicate = HKQuery.predicateForObjects(from: workout)
+            let routeType = HKSeriesType.workoutRoute()
+            
+            // 查询路线数据
+            let routeQuery = HKSampleQuery(
+                sampleType: routeType,
+                predicate: routePredicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { [weak self] (_, samples, error) in
+                guard let self = self else {
+                    continuation.resume(returning: [])
+                    return
+                }
+                
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                
+                guard let routes = samples as? [HKWorkoutRoute],
+                      let route = routes.first else {
+                    continuation.resume(returning: [])
+                    return
+                }
+                
+                // 获取路线中的位置点
+                let locationQuery = HKWorkoutRouteQuery(route: route) { (_, locationOrNil, done, errorOrNil) in
+                    if let error = errorOrNil {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    
+                    if let location = locationOrNil {
+                        locations.append(contentsOf: location)
+                    }
+                    
+                    if done {
+                        continuation.resume(returning: locations)
+                    }
+                }
+                
+                self.healthStore.execute(locationQuery)
+            }
+            
+            healthStore.execute(routeQuery)
         }
     }
     
-    // 获取跑步路线位置数据
-    private func fetchRoute(for workout: HKWorkout, completion: @escaping ([CLLocation]) -> Void) {
-        var locations: [CLLocation] = []
-        
-        // 创建路线查询谓词
-        let routePredicate = HKQuery.predicateForObjects(from: workout)
-        let routeType = HKSeriesType.workoutRoute()
-        
-        // 查询路线数据
-        let routeQuery = HKSampleQuery(
-            sampleType: routeType,
-            predicate: routePredicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: nil
-        ) { [weak self] (_, samples, error) in
-            guard let self = self,
-                  let routes = samples as? [HKWorkoutRoute],
-                  let route = routes.first else {
-                completion([])
-                return
-            }
-            
-            // 获取路线中的位置点
-            let locationQuery = HKWorkoutRouteQuery(route: route) { (_, locationOrNil, done, errorOrNil) in
-                if let location = locationOrNil {
-                    locations.append(contentsOf: location)
-                }
-                
-                if done {
-                    completion(locations)
-                }
-            }
-            
-            self.healthStore.execute(locationQuery)
-        }
-        
-        healthStore.execute(routeQuery)
+    // MARK: - 清理资源
+    
+    deinit {
+        // 取消所有挂起的任务
+        cancellables.forEach { $0.cancel() }
     }
 }
 
-// 包装 CLLocation 使其遵循 Identifiable 协议
+// MARK: - 位置数据模型
+
+/// 包装 CLLocation 使其遵循 Identifiable 协议
 struct IdentifiableLocation: Identifiable {
     let id = UUID() // 提供唯一标识符
     let location: CLLocation
@@ -271,7 +373,9 @@ struct IdentifiableLocation: Identifiable {
     }
 }
 
-// 跑步数据结构
+// MARK: - 跑步数据结构
+
+/// 跑步数据结构
 struct RunningWorkout: Identifiable {
     let id: UUID
     let workout: HKWorkout
@@ -308,6 +412,12 @@ struct RunningWorkout: Identifiable {
         return formatter.string(from: duration) ?? ""
     }
     
+    // 计算卡路里每公里
+    var caloriesPerKilometer: Double {
+        guard totalDistance > 0 else { return 0 }
+        return totalEnergyBurned / (totalDistance / 1000)
+    }
+    
     init(workout: HKWorkout,
          totalDistance: Double,
          averagePace: Double,
@@ -327,6 +437,7 @@ struct RunningWorkout: Identifiable {
     }
 }
 
+// MARK: - RunningWorkout 扩展
 extension RunningWorkout {
     // 获取起点和终点的可识别位置
     var identifiablePoints: [IdentifiableLocation] {
@@ -355,5 +466,15 @@ extension RunningWorkout {
             IdentifiableLocation(location: $0, tint: .blue)
         }
     }
+    
+    // 运动强度评估（基于心率）
+    var intensityLevel: String {
+        if averageHeartRate < 120 {
+            return "低强度"
+        } else if averageHeartRate < 150 {
+            return "中等强度"
+        } else {
+            return "高强度"
+        }
+    }
 }
-
