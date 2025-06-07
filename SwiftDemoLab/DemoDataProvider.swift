@@ -33,6 +33,7 @@ struct DemoDataProvider {
             ]),
             DemoSection(title: "框架使用", items: [
                 DemoItem(title: "HealthKit", desc: "HealthKit的数据同步 Demo", controllerType: HealthKitViewController.self),
+                DemoItem(title: "CAGradientLayer", desc: "CAGradientLayer的使用", controllerType: CAGradientLayerViewController.self),
             ])
         ]
     }
