@@ -76,18 +76,15 @@ struct RunningWorkoutsView: View {
             case .shouldRequest:
                 // 需要请求授权，显示授权弹窗
                 showingAuthorization = true
-                
             case .unnecessary:
                 // 用户已经授权，直接获取数据
                 dataManager.fetchRunningWorkouts()
-                
             case .unknown:
-                // 状态未知，记录日志并可选择性地重试
-                print("HealthKit authorization status unknown")
-                
+                showingErrorAlert = true
+                dataManager.errorMessage = "健康数据授权状态未知，请稍后重试。"
             @unknown default:
-                // 兼容未来可能新增的状态
-                print("Unhandled HealthKit authorization status: \(status)")
+                showingErrorAlert = true
+                dataManager.errorMessage = "未知的健康数据授权状态，请稍后重试。"
             }
         }
     }
