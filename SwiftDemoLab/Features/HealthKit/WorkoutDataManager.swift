@@ -9,32 +9,10 @@ import HealthKit
 import CoreLocation
 import SwiftUI
 import Combine
-import MapKit
-
-// MARK: - Permission Configuration
-
-private struct HealthKitPermissions {
-    static func getRequiredPermissions() -> (toShare: Set<HKSampleType>, toRead: Set<HKObjectType>) {
-        let toShare: Set<HKSampleType> = [
-            HKObjectType.quantityType(forIdentifier: .stepCount)!
-        ]
-        
-        let toRead: Set<HKObjectType> = [
-            HKObjectType.workoutType(),
-            HKObjectType.quantityType(forIdentifier: .heartRate)!,
-            HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning)!,
-            HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
-            HKObjectType.quantityType(forIdentifier: .stepCount)!
-        ]
-        
-        return (toShare, toRead)
-    }
-}
 
 class WorkoutDataManager: NSObject, ObservableObject {
     // MARK: - Properties
     let healthStore = HKHealthStore()
-    let permissionTypes = HealthKitPermissions.getRequiredPermissions()
     
     // 发布的属性
     @Published var runningWorkouts: [RunningWorkout] = []
@@ -47,17 +25,8 @@ class WorkoutDataManager: NSObject, ObservableObject {
     // MARK: - 授权管理
     
     /// 检查HealthKit权限状态
-    func checkAuthorizationStatus() async -> HKAuthorizationRequestStatus {
-        do {
-            let status = try await healthStore.statusForAuthorizationRequest(
-                toShare: permissionTypes.toShare,
-                read: permissionTypes.toRead
-            )
-            return status
-        }catch {
-            print("检查权限状态失败: \(error.localizedDescription)")
-            return .shouldRequest
-        }
+    func checkAuthorizationStatus() -> HKAuthorizationStatus {
+        return healthStore.authorizationStatus(for: HKObjectType.workoutType())
     }
     
     /// 请求健康数据权限
@@ -71,15 +40,38 @@ class WorkoutDataManager: NSObject, ObservableObject {
             return
         }
         
+        // 定义需要读取的数据类型
+        var typesToRead: Set<HKObjectType> = [
+            HKObjectType.workoutType(),
+            HKSeriesType.workoutRoute(),
+            HKObjectType.quantityType(forIdentifier: .heartRate)!,
+            HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning)!,
+            HKObjectType.quantityType(forIdentifier: .distanceCycling)!,
+            HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
+            HKObjectType.quantityType(forIdentifier: .stepCount)!
+        ]
+
+        if #available(iOS 16.0, *) {
+            if let runningSpeed = HKObjectType.quantityType(forIdentifier: .runningSpeed) {
+                typesToRead.insert(runningSpeed)
+            }
+        }
+        
+        if #available(iOS 17.0, *) {
+            if let cyclingSpeed = HKObjectType.quantityType(forIdentifier: .cyclingSpeed) {
+                typesToRead.insert(cyclingSpeed)
+            }
+        }
+        
         // 请求权限
-        healthStore.requestAuthorization(toShare: permissionTypes.toShare, read: permissionTypes.toRead) { [weak self] success, error in
+        healthStore.requestAuthorization(toShare: nil, read: typesToRead) { [weak self] success, error in
             DispatchQueue.main.async {
                 if let error = error {
                     self?.errorMessage = "授权失败: \(error.localizedDescription)"
                     completion(false)
                     return
                 }
-                 
+                
                 if success {
                     completion(true)
                 } else {
@@ -89,66 +81,54 @@ class WorkoutDataManager: NSObject, ObservableObject {
             }
         }
     }
-
     
     // MARK: - 数据获取
     
     /// 获取所有跑步类型的健身记录
-    func fetchRunningWorkouts(completion: @escaping (Error?) -> Void) {
-        Task {
-            do {
-                try await fetchRunningWorkouts()
-                completion(nil)
-            } catch{
-                await MainActor.run {
-                    completion(error)
+    func fetchRunningWorkouts() {
+        // 重置状态
+        isLoading = true
+        errorMessage = nil
+        runningWorkouts.removeAll()
+        
+        // 创建跑步类型谓词
+        let runningPredicate = HKQuery.predicateForWorkouts(with: .running)
+        
+        // 按结束时间排序（最新在前）
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+        
+        // 创建查询
+        let query = HKSampleQuery(
+            sampleType: .workoutType(),
+            predicate: runningPredicate,
+            limit: HKObjectQueryNoLimit,
+            sortDescriptors: [sortDescriptor]
+        ) { [weak self] (_, samples, error) in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                self.isLoading = false
+                
+                if let error = error {
+                    self.errorMessage = "查询失败: \(error.localizedDescription)"
+                    return
+                }
+                
+                guard let workouts = samples as? [HKWorkout], !workouts.isEmpty else {
+                    self.errorMessage = "未找到跑步记录"
+                    return
+                }
+                
+                // 使用异步任务组处理所有工作
+                Task {
+                    await self.processWorkouts(workouts)
                 }
             }
-        }
-    }
-    
-    func fetchRunningWorkouts() async throws {
-        await MainActor.run {
-            isLoading = true
-            errorMessage = nil
-            runningWorkouts.removeAll()
         }
         
-        do {
-            let workouts = try await queryRunningWorkouts()
-            await processWorkouts(workouts)
-        } catch {
-            await MainActor.run {
-                isLoading = false
-                errorMessage = "查询失败: \(error.localizedDescription)"
-            }
-        }
+        healthStore.execute(query)
     }
-
-    private func queryRunningWorkouts() async throws -> [HKWorkout] {
-        try await withCheckedThrowingContinuation { continuation in
-            let predicate = HKQuery.predicateForWorkouts(with: .running)
-            let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
-            
-            let query = HKSampleQuery(
-                sampleType: .workoutType(),
-                predicate: predicate,
-                limit: HKObjectQueryNoLimit,
-                sortDescriptors: [sortDescriptor]
-            ) { _, samples, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else if let workouts = samples as? [HKWorkout] {
-                    continuation.resume(returning: workouts)
-                } else {
-                    continuation.resume(returning: [])
-                }
-            }
-            
-            healthStore.execute(query)
-        }
-    }
-
+    
     /// 异步处理多个跑步记录
     @MainActor
     private func processWorkouts(_ workouts: [HKWorkout]) async {
@@ -176,73 +156,27 @@ class WorkoutDataManager: NSObject, ObservableObject {
             routeLocations: []
         )
         
-        // 使用任务组并发获取所有数据，但添加延迟以避免触发 HealthKit 限流
+        // 使用任务组并发获取所有数据
+        async let distance = fetchTotalDistance(for: workout)
+        async let pace = fetchAveragePace(for: workout)
+        async let energy = fetchTotalEnergy(for: workout)
+        async let heartRate = fetchAverageHeartRate(for: workout)
+        async let locations = fetchRouteLocations(for: workout)
+        
         do {
-            // 获取距离数据
-            do {
-                runningWorkout.totalDistance = try await fetchTotalDistance(for: workout)
-            } catch {
-                print("获取距离数据失败: \(error.localizedDescription)")
-            }
+            // 等待所有请求完成并填充数据
+            runningWorkout.totalDistance = try await distance
+            runningWorkout.averagePace = try await pace
+            runningWorkout.totalEnergyBurned = try await energy
+            runningWorkout.averageHeartRate = try await heartRate
+            runningWorkout.routeLocations = try await locations
             
-            // 添加小延迟
-            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-            
-            // 获取配速数据
-            do {
-                runningWorkout.averagePace = try await fetchAveragePace(for: workout)
-            } catch {
-                print("获取配速数据失败: \(error.localizedDescription)")
-            }
-            
-            // 添加小延迟
-            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-            
-            // 获取能量数据
-            do {
-                runningWorkout.totalEnergyBurned = try await fetchTotalEnergy(for: workout)
-            } catch {
-                print("获取能量数据失败: \(error.localizedDescription)")
-            }
-            
-            // 添加小延迟
-            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-            
-            // 获取心率数据
-            do {
-                runningWorkout.averageHeartRate = try await fetchAverageHeartRate(for: workout)
-            } catch {
-                print("获取心率数据失败: \(error.localizedDescription)")
-            }
-            
-            // 添加小延迟
-            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-            
-            // 获取路线数据
-            do {
-                let locations = try await fetchRouteLocations(for: workout)
-                // 限制路线点数量，避免内存问题
-                runningWorkout.routeLocations = Array(locations.prefix(1000))
-            } catch {
-                print("获取路线数据失败: \(error.localizedDescription)")
-            }
-           
-            await MainActor.run {
-                isLoading = false
-            }
             return runningWorkout
         } catch {
-            await setErrorMessage(error: error)
+            print("获取运动详情失败: \(error.localizedDescription)")
             return nil
         }
     }
-    /// 刷新数据
-    @MainActor
-    func setErrorMessage(error: Error) {
-        isLoading = false
-        errorMessage = "获取运动详情失败:\n \(error.localizedDescription)"
-    }
-
     
     // MARK: - 详细数据获取方法
     
@@ -542,54 +476,5 @@ extension RunningWorkout {
         } else {
             return "高强度"
         }
-    }
-}
-
-// 扩展RunningWorkout提供地图相关功能
-extension RunningWorkout {
-    
-    // 获取起点位置
-    var startLocation: CLLocation {
-        routeLocations.first ?? CLLocation(latitude: 0, longitude: 0)
-    }
-    
-    // 获取终点位置
-    var endLocation: CLLocation {
-        routeLocations.last ?? CLLocation(latitude: 0, longitude: 0)
-    }
-    
-    // 计算适合地图显示的区域
-    var routeRegion: MKCoordinateRegion {
-        guard !routeLocations.isEmpty else {
-            return MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
-                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-            )
-        }
-        
-        var minLat = routeLocations[0].coordinate.latitude
-        var maxLat = minLat
-        var minLon = routeLocations[0].coordinate.longitude
-        var maxLon = minLon
-        
-        for location in routeLocations {
-            let coord = location.coordinate
-            minLat = min(minLat, coord.latitude)
-            maxLat = max(maxLat, coord.latitude)
-            minLon = min(minLon, coord.longitude)
-            maxLon = max(maxLon, coord.longitude)
-        }
-        
-        let center = CLLocationCoordinate2D(
-            latitude: (minLat + maxLat) / 2,
-            longitude: (minLon + maxLon) / 2
-        )
-        
-        let span = MKCoordinateSpan(
-            latitudeDelta: (maxLat - minLat) * 1.5,
-            longitudeDelta: (maxLon - minLon) * 1.5
-        )
-        
-        return MKCoordinateRegion(center: center, span: span)
     }
 }
