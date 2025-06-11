@@ -89,54 +89,66 @@ class WorkoutDataManager: NSObject, ObservableObject {
             }
         }
     }
+
     
     // MARK: - 数据获取
     
     /// 获取所有跑步类型的健身记录
-    func fetchRunningWorkouts() {
-        // 重置状态
-        isLoading = true
-        errorMessage = nil
-        runningWorkouts.removeAll()
-        
-        // 创建跑步类型谓词
-        let runningPredicate = HKQuery.predicateForWorkouts(with: .running)
-        
-        // 按结束时间排序（最新在前）
-        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
-        
-        // 创建查询
-        let query = HKSampleQuery(
-            sampleType: .workoutType(),
-            predicate: runningPredicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: [sortDescriptor]
-        ) { [weak self] (_, samples, error) in
-            guard let self = self else { return }
-            
-            DispatchQueue.main.async {
-                self.isLoading = false
-                
-                if let error = error {
-                    self.errorMessage = "查询失败: \(error.localizedDescription)"
-                    return
-                }
-                
-                guard let workouts = samples as? [HKWorkout], !workouts.isEmpty else {
-                    self.errorMessage = "未找到跑步记录"
-                    return
-                }
-                
-                // 使用异步任务组处理所有工作
-                Task {
-                    await self.processWorkouts(workouts)
+    func fetchRunningWorkouts(completion: @escaping (Error?) -> Void) {
+        Task {
+            do {
+                try await fetchRunningWorkouts()
+                completion(nil)
+            } catch{
+                await MainActor.run {
+                    completion(error)
                 }
             }
         }
-        
-        healthStore.execute(query)
     }
     
+    func fetchRunningWorkouts() async throws {
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+            runningWorkouts.removeAll()
+        }
+        
+        do {
+            let workouts = try await queryRunningWorkouts()
+            await processWorkouts(workouts)
+        } catch {
+            await MainActor.run {
+                isLoading = false
+                errorMessage = "查询失败: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func queryRunningWorkouts() async throws -> [HKWorkout] {
+        try await withCheckedThrowingContinuation { continuation in
+            let predicate = HKQuery.predicateForWorkouts(with: .running)
+            let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+            
+            let query = HKSampleQuery(
+                sampleType: .workoutType(),
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [sortDescriptor]
+            ) { _, samples, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else if let workouts = samples as? [HKWorkout] {
+                    continuation.resume(returning: workouts)
+                } else {
+                    continuation.resume(returning: [])
+                }
+            }
+            
+            healthStore.execute(query)
+        }
+    }
+
     /// 异步处理多个跑步记录
     @MainActor
     private func processWorkouts(_ workouts: [HKWorkout]) async {
@@ -164,27 +176,73 @@ class WorkoutDataManager: NSObject, ObservableObject {
             routeLocations: []
         )
         
-        // 使用任务组并发获取所有数据
-        async let distance = fetchTotalDistance(for: workout)
-        async let pace = fetchAveragePace(for: workout)
-        async let energy = fetchTotalEnergy(for: workout)
-        async let heartRate = fetchAverageHeartRate(for: workout)
-        async let locations = fetchRouteLocations(for: workout)
-        
+        // 使用任务组并发获取所有数据，但添加延迟以避免触发 HealthKit 限流
         do {
-            // 等待所有请求完成并填充数据
-            runningWorkout.totalDistance = try await distance
-            runningWorkout.averagePace = try await pace
-            runningWorkout.totalEnergyBurned = try await energy
-            runningWorkout.averageHeartRate = try await heartRate
-            runningWorkout.routeLocations = try await locations
+            // 获取距离数据
+            do {
+                runningWorkout.totalDistance = try await fetchTotalDistance(for: workout)
+            } catch {
+                print("获取距离数据失败: \(error.localizedDescription)")
+            }
             
+            // 添加小延迟
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            
+            // 获取配速数据
+            do {
+                runningWorkout.averagePace = try await fetchAveragePace(for: workout)
+            } catch {
+                print("获取配速数据失败: \(error.localizedDescription)")
+            }
+            
+            // 添加小延迟
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            
+            // 获取能量数据
+            do {
+                runningWorkout.totalEnergyBurned = try await fetchTotalEnergy(for: workout)
+            } catch {
+                print("获取能量数据失败: \(error.localizedDescription)")
+            }
+            
+            // 添加小延迟
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            
+            // 获取心率数据
+            do {
+                runningWorkout.averageHeartRate = try await fetchAverageHeartRate(for: workout)
+            } catch {
+                print("获取心率数据失败: \(error.localizedDescription)")
+            }
+            
+            // 添加小延迟
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            
+            // 获取路线数据
+            do {
+                let locations = try await fetchRouteLocations(for: workout)
+                // 限制路线点数量，避免内存问题
+                runningWorkout.routeLocations = Array(locations.prefix(1000))
+            } catch {
+                print("获取路线数据失败: \(error.localizedDescription)")
+            }
+           
+            await MainActor.run {
+                isLoading = false
+            }
             return runningWorkout
         } catch {
-            print("获取运动详情失败: \(error.localizedDescription)")
+            await setErrorMessage(error: error)
             return nil
         }
     }
+    /// 刷新数据
+    @MainActor
+    func setErrorMessage(error: Error) {
+        isLoading = false
+        errorMessage = "获取运动详情失败:\n \(error.localizedDescription)"
+    }
+
     
     // MARK: - 详细数据获取方法
     

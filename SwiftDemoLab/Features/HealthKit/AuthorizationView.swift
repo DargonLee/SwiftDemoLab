@@ -27,8 +27,9 @@ struct AuthorizationView: View {
             Button("授权访问") {
                 dataManager.requestAuthorization { success in
                     if success {
-                        dataManager.fetchRunningWorkouts()
-                        presentationMode.wrappedValue.dismiss()
+                        dataManager.fetchRunningWorkouts {_ in 
+                            presentationMode.wrappedValue.dismiss()
+                        }
                     }
                 }
             }

@@ -19,10 +19,9 @@ struct RunningWorkoutsView: View {
             if dataManager.isLoading {
                 LoadingView()
             } else if dataManager.errorMessage != nil {
-                EmptyView()
-                    .onAppear {
-                        showingErrorAlert = true
-                    }
+                Text(dataManager.errorMessage ?? "未知错误")
+                    .foregroundColor(.red)
+                    .padding()
             } else if dataManager.runningWorkouts.isEmpty {
                 EmptyWorkoutsView()
             } else {
@@ -78,7 +77,7 @@ struct RunningWorkoutsView: View {
                 showingAuthorization = true
             case .unnecessary:
                 // 用户已经授权，直接获取数据
-                dataManager.fetchRunningWorkouts()
+                refreshData()
             case .unknown:
                 showingErrorAlert = true
                 dataManager.errorMessage = "健康数据授权状态未知，请稍后重试。"
@@ -90,7 +89,9 @@ struct RunningWorkoutsView: View {
     }
     
     private func refreshData() {
-        dataManager.fetchRunningWorkouts()
+        dataManager.fetchRunningWorkouts {_ in 
+            
+        }
     }
 }
 
