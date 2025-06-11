@@ -318,7 +318,8 @@
 				DEVELOPMENT_TEAM = S98ZGC6777;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SwiftDemoLab/Resources/Info.plist;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "我们需要访问您的跑步数据以展示您的运动记录";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "此应用需要访问您的健康数据以提供个性化的健康分析";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "此应用需要写入健康数据以记录您的步数信息";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -353,7 +354,8 @@
 				DEVELOPMENT_TEAM = S98ZGC6777;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SwiftDemoLab/Resources/Info.plist;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "我们需要访问您的跑步数据以展示您的运动记录";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "此应用需要访问您的健康数据以提供个性化的健康分析";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "此应用需要写入健康数据以记录您的步数信息";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;

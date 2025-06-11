@@ -9,10 +9,32 @@ import HealthKit
 import CoreLocation
 import SwiftUI
 import Combine
+import MapKit
+
+// MARK: - Permission Configuration
+
+private struct HealthKitPermissions {
+    static func getRequiredPermissions() -> (toShare: Set<HKSampleType>, toRead: Set<HKObjectType>) {
+        let toShare: Set<HKSampleType> = [
+            HKObjectType.quantityType(forIdentifier: .stepCount)!
+        ]
+        
+        let toRead: Set<HKObjectType> = [
+            HKObjectType.workoutType(),
+            HKObjectType.quantityType(forIdentifier: .heartRate)!,
+            HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning)!,
+            HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
+            HKObjectType.quantityType(forIdentifier: .stepCount)!
+        ]
+        
+        return (toShare, toRead)
+    }
+}
 
 class WorkoutDataManager: NSObject, ObservableObject {
     // MARK: - Properties
     let healthStore = HKHealthStore()
+    let permissionTypes = HealthKitPermissions.getRequiredPermissions()
     
     // 发布的属性
     @Published var runningWorkouts: [RunningWorkout] = []
@@ -25,8 +47,17 @@ class WorkoutDataManager: NSObject, ObservableObject {
     // MARK: - 授权管理
     
     /// 检查HealthKit权限状态
-    func checkAuthorizationStatus() -> HKAuthorizationStatus {
-        return healthStore.authorizationStatus(for: HKObjectType.workoutType())
+    func checkAuthorizationStatus() async -> HKAuthorizationRequestStatus {
+        do {
+            let status = try await healthStore.statusForAuthorizationRequest(
+                toShare: permissionTypes.toShare,
+                read: permissionTypes.toRead
+            )
+            return status
+        }catch {
+            print("检查权限状态失败: \(error.localizedDescription)")
+            return .shouldRequest
+        }
     }
     
     /// 请求健康数据权限
@@ -40,38 +71,15 @@ class WorkoutDataManager: NSObject, ObservableObject {
             return
         }
         
-        // 定义需要读取的数据类型
-        var typesToRead: Set<HKObjectType> = [
-            HKObjectType.workoutType(),
-            HKSeriesType.workoutRoute(),
-            HKObjectType.quantityType(forIdentifier: .heartRate)!,
-            HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning)!,
-            HKObjectType.quantityType(forIdentifier: .distanceCycling)!,
-            HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
-            HKObjectType.quantityType(forIdentifier: .stepCount)!
-        ]
-
-        if #available(iOS 16.0, *) {
-            if let runningSpeed = HKObjectType.quantityType(forIdentifier: .runningSpeed) {
-                typesToRead.insert(runningSpeed)
-            }
-        }
-        
-        if #available(iOS 17.0, *) {
-            if let cyclingSpeed = HKObjectType.quantityType(forIdentifier: .cyclingSpeed) {
-                typesToRead.insert(cyclingSpeed)
-            }
-        }
-        
         // 请求权限
-        healthStore.requestAuthorization(toShare: nil, read: typesToRead) { [weak self] success, error in
+        healthStore.requestAuthorization(toShare: permissionTypes.toShare, read: permissionTypes.toRead) { [weak self] success, error in
             DispatchQueue.main.async {
                 if let error = error {
                     self?.errorMessage = "授权失败: \(error.localizedDescription)"
                     completion(false)
                     return
                 }
-                
+                 
                 if success {
                     completion(true)
                 } else {
@@ -476,5 +484,54 @@ extension RunningWorkout {
         } else {
             return "高强度"
         }
+    }
+}
+
+// 扩展RunningWorkout提供地图相关功能
+extension RunningWorkout {
+    
+    // 获取起点位置
+    var startLocation: CLLocation {
+        routeLocations.first ?? CLLocation(latitude: 0, longitude: 0)
+    }
+    
+    // 获取终点位置
+    var endLocation: CLLocation {
+        routeLocations.last ?? CLLocation(latitude: 0, longitude: 0)
+    }
+    
+    // 计算适合地图显示的区域
+    var routeRegion: MKCoordinateRegion {
+        guard !routeLocations.isEmpty else {
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+            )
+        }
+        
+        var minLat = routeLocations[0].coordinate.latitude
+        var maxLat = minLat
+        var minLon = routeLocations[0].coordinate.longitude
+        var maxLon = minLon
+        
+        for location in routeLocations {
+            let coord = location.coordinate
+            minLat = min(minLat, coord.latitude)
+            maxLat = max(maxLat, coord.latitude)
+            minLon = min(minLon, coord.longitude)
+            maxLon = max(maxLon, coord.longitude)
+        }
+        
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+        
+        let span = MKCoordinateSpan(
+            latitudeDelta: (maxLat - minLat) * 1.5,
+            longitudeDelta: (maxLon - minLon) * 1.5
+        )
+        
+        return MKCoordinateRegion(center: center, span: span)
     }
 }
