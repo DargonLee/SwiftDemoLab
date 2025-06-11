@@ -493,64 +493,38 @@ struct FullScreenMapView: View {
     }
     
     var body: some View {
-//        Map(coordinateRegion: $currentRegion,
-//            interactionModes: .all,
-//            showsUserLocation: false,
-//            annotationItems: workout.identifiablePoints) { point in
-//            MapAnnotation(coordinate: point.coordinate) {
-//                Circle()
-//                    .fill(point.tint)
-//                    .frame(width: 16, height: 16)
-//                    .overlay(
-//                        Circle()
-//                            .stroke(Color.white, lineWidth: 2)
-//                    )
-//                    .shadow(radius: 3)
-//            }
-//        }
-//        .overlay {
-//            // 绘制路线
-//            if !workout.routeLocations.isEmpty {
-//                MapPolyline(coordinates: routeCoordinates)
-//                    .stroke(Color.blue, lineWidth: 4)
-//            }
-//        }
-        Map(position: $currentRegion) {
-            ForEach(workout.identifiablePoints) { point in
-                Annotation("", coordinate: point.coordinate) {
-                    Circle()
-                        .fill(point.tint)
-                        .frame(width: 16, height: 16)
-                        .overlay(
-                            Circle().stroke(Color.white, lineWidth: 2)
-                        )
-                        .shadow(radius: 3)
+        ZStack(alignment: .topTrailing) {
+            Map(position: $currentRegion) {
+                ForEach(workout.identifiablePoints) { point in
+                    Annotation("", coordinate: point.coordinate) {
+                        Circle()
+                            .fill(point.tint)
+                            .frame(width: 16, height: 16)
+                            .overlay(
+                                Circle().stroke(Color.white, lineWidth: 2)
+                            )
+                            .shadow(radius: 3)
+                    }
+                }
+                if !routeCoordinates.isEmpty {
+                    MapPolyline(coordinates: routeCoordinates)
+                        .stroke(.blue, lineWidth: 4)
                 }
             }
-            if !routeCoordinates.isEmpty {
-                MapPolyline(coordinates: routeCoordinates)
-                    .stroke(.blue, lineWidth: 4)
+            .edgesIgnoringSafeArea(.all)
+            Button(action: {
+                presentationMode.wrappedValue.dismiss()
+            }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.primary)
+                    .padding(10)
+                    .background(Color(.systemBackground).opacity(0.8))
+                    .clipShape(Circle())
+                    .shadow(radius: 2)
             }
+            .padding([.top, .trailing], 16)
         }
-        .edgesIgnoringSafeArea(.all)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button("关闭") {
-                    presentationMode.wrappedValue.dismiss()
-                }
-            }
-
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    // 重置为初始区域
-                    currentRegion = cameraPosition
-                }) {
-                    Image(systemName: "arrow.counterclockwise")
-                }
-            }
-        }
-        .navigationTitle("跑步路线")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
