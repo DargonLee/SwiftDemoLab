@@ -95,10 +95,34 @@ class WorkoutDataManager: NSObject, ObservableObject {
             HKObjectType.quantityType(forIdentifier: .stepCount)!
         ]
         
+        // 添加新增的健康数据类型
+        if let elevationAscended = HKObjectType.quantityType(forIdentifier: .flightsClimbed) {
+            typesToRead.insert(elevationAscended)
+        }
+        
+        // 高度变化相关数据类型
+        if #available(iOS 16.0, *) {
+            if let elevationDescended = HKObjectType.quantityType(forIdentifier: .stairDescentSpeed) {
+                typesToRead.insert(elevationDescended)
+            }
+        }
+        
         // 适配 iOS 16 及以上版本的跑步速度类型
         if #available(iOS 16.0, *) {
             if let runningSpeed = HKObjectType.quantityType(forIdentifier: .runningSpeed) {
                 typesToRead.insert(runningSpeed)
+            }
+            
+            if let runningStrideLength = HKObjectType.quantityType(forIdentifier: .runningStrideLength) {
+                typesToRead.insert(runningStrideLength)
+            }
+            
+            if let runningVerticalOscillation = HKObjectType.quantityType(forIdentifier: .runningVerticalOscillation) {
+                typesToRead.insert(runningVerticalOscillation)
+            }
+            
+            if let runningGroundContactTime = HKObjectType.quantityType(forIdentifier: .runningGroundContactTime) {
+                typesToRead.insert(runningGroundContactTime)
             }
         }
         
@@ -205,6 +229,9 @@ class WorkoutDataManager: NSObject, ObservableObject {
         async let energy = fetchTotalEnergy(for: workout)
         async let heartRate = fetchAverageHeartRate(for: workout)
         async let locations = fetchRouteLocations(for: workout)
+        async let steps = fetchTotalSteps(for: workout)
+        async let elevationData = fetchElevationData(for: workout)
+        async let maxHR = fetchMaxHeartRate(for: workout)
         
         do {
             // 等待所有请求完成并填充数据
@@ -219,12 +246,162 @@ class WorkoutDataManager: NSObject, ObservableObject {
                 ? Array(allLocations.prefix(1000))
                 : allLocations
             
+            // 填充新增字段
+            runningWorkout.totalSteps = try await steps
+            let elevation = try await elevationData
+            runningWorkout.elevationGain = elevation.gain
+            runningWorkout.elevationLoss = elevation.loss
+            runningWorkout.maxHeartRate = try await maxHR
+            
+            // 如果有路线数据，尝试获取天气和地形信息
+            if let firstLocation = runningWorkout.routeLocations.first {
+                // 根据开始位置推断地形类型
+                runningWorkout.terrainType = inferTerrainType(from: runningWorkout.routeLocations)
+                
+                // 在实际应用中，这里可以调用天气API获取历史天气数据
+                // 此处为简化只提供默认值，可以扩展为实际实现
+                if let weather = await fetchWeatherData(for: firstLocation.coordinate, at: workout.startDate) {
+                    runningWorkout.weatherCondition = weather.condition
+                    runningWorkout.temperature = weather.temperature
+                    runningWorkout.humidity = weather.humidity
+                }
+            }
+            
             return runningWorkout
         } catch {
             print("获取运动详情失败: \(error.localizedDescription)")
             // 即使获取详细信息失败，我们仍返回基本信息
             return runningWorkout
         }
+    }
+    
+    /// 获取总步数
+    /// - Parameter workout: 跑步记录
+    /// - Returns: 总步数
+    private func fetchTotalSteps(for workout: HKWorkout) async throws -> Int {
+        guard let stepsType = HKQuantityType.quantityType(forIdentifier: .stepCount) else {
+            return 0
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            let stepsPredicate = HKQuery.predicateForObjects(from: workout)
+            
+            let stepsQuery = HKStatisticsQuery(
+                quantityType: stepsType,
+                quantitySamplePredicate: stepsPredicate
+            ) { (_, result, error) in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                
+                let steps = Int(result?.sumQuantity()?.doubleValue(for: .count()) ?? 0)
+                continuation.resume(returning: steps)
+            }
+            healthStore.execute(stepsQuery)
+        }
+    }
+    
+    /// 获取海拔数据
+    /// - Parameter workout: 跑步记录
+    /// - Returns: 累计爬升和下降
+    private func fetchElevationData(for workout: HKWorkout) async throws -> (gain: Double, loss: Double) {
+        // 如果没有路线数据，则无法计算海拔变化
+        let locations = try await fetchRouteLocations(for: workout)
+        if locations.isEmpty {
+            return (0, 0)
+        }
+        
+        var totalGain: Double = 0
+        var totalLoss: Double = 0
+        var previousAltitude = locations[0].altitude
+        
+        for location in locations.dropFirst() {
+            let currentAltitude = location.altitude
+            let difference = currentAltitude - previousAltitude
+            
+            if difference > 0 {
+                totalGain += difference
+            } else {
+                totalLoss += abs(difference)
+            }
+            
+            previousAltitude = currentAltitude
+        }
+        
+        return (totalGain, totalLoss)
+    }
+    
+    /// 获取最大心率
+    /// - Parameter workout: 跑步记录
+    /// - Returns: 最大心率
+    private func fetchMaxHeartRate(for workout: HKWorkout) async throws -> Double {
+        guard let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
+            return 0
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            let heartRatePredicate = HKQuery.predicateForObjects(from: workout)
+            
+            let heartRateQuery = HKStatisticsQuery(
+                quantityType: heartRateType,
+                quantitySamplePredicate: heartRatePredicate,
+                options: .discreteMax
+            ) { (_, result, error) in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                
+                let maxHR = result?.maximumQuantity()?.doubleValue(for: HKUnit.count().unitDivided(by: .minute())) ?? 0
+                continuation.resume(returning: maxHR)
+            }
+            healthStore.execute(heartRateQuery)
+        }
+    }
+    
+    /// 根据位置推断地形类型
+    /// - Parameter locations: 位置数组
+    /// - Returns: 推断的地形类型
+    private func inferTerrainType(from locations: [CLLocation]) -> String {
+        // 这里可以实现更复杂的逻辑，例如根据坡度变化、海拔等推断
+        // 简化实现
+        if locations.isEmpty {
+            return "未知"
+        }
+        
+        // 计算海拔变化
+        var elevationChanges: [Double] = []
+        var previousAltitude = locations[0].altitude
+        
+        for location in locations.dropFirst() {
+            let change = abs(location.altitude - previousAltitude)
+            elevationChanges.append(change)
+            previousAltitude = location.altitude
+        }
+        
+        // 计算平均海拔变化
+        let avgElevationChange = elevationChanges.reduce(0, +) / Double(max(1, elevationChanges.count))
+        
+        // 根据平均海拔变化推断地形
+        if avgElevationChange > 5.0 {
+            return "山地"
+        } else if avgElevationChange > 2.0 {
+            return "丘陵"
+        } else {
+            return "平地"
+        }
+    }
+    
+    /// 获取天气数据
+    /// - Parameters:
+    ///   - coordinate: 坐标
+    ///   - date: 日期
+    /// - Returns: 天气数据
+    private func fetchWeatherData(for coordinate: CLLocationCoordinate2D, at date: Date) async -> (condition: String, temperature: Double, humidity: Double)? {
+        // 实际应用中，这里应该调用天气API获取历史天气数据
+        // 由于这只是一个示例，我们返回一些模拟数据
+        return ("晴朗", 25.0, 60.0)
     }
     
     // MARK: - 健康数据详细查询方法
@@ -493,6 +670,17 @@ struct RunningWorkout: Identifiable {
     var averageHeartRate: Double  // 次/分钟
     var routeLocations: [CLLocation]
     
+    // 新增字段
+    var totalSteps: Int = 0           // 总步数
+    var averageSpeed: Double = 0      // 平均速度 (米/秒)
+    var elevationGain: Double = 0     // 累计爬升 (米)
+    var elevationLoss: Double = 0     // 累计下降 (米)
+    var maxHeartRate: Double = 0      // 最大心率
+    var weatherCondition: String = "" // 天气状况
+    var temperature: Double = 0       // 温度 (摄氏度)
+    var humidity: Double = 0          // 湿度
+    var terrainType: String = ""      // 地形类型 (平地/山地/城市等)
+    
     // 格式化距离显示
     var formattedDistance: String {
         let formatter = LengthFormatter()
@@ -516,10 +704,34 @@ struct RunningWorkout: Identifiable {
         return formatter.string(from: duration) ?? ""
     }
     
+    // 格式化速度显示 (千米/小时)
+    var formattedSpeed: String {
+        let kmPerHour = averageSpeed * 3.6
+        return String(format: "%.1f km/h", kmPerHour)
+    }
+    
+    // 格式化步数显示
+    var formattedSteps: String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: totalSteps)) ?? "0"
+    }
+    
+    // 格式化高度显示
+    var formattedElevation: String {
+        return String(format: "+%.0f m / -%.0f m", elevationGain, elevationLoss)
+    }
+    
     // 计算卡路里每公里
     var caloriesPerKilometer: Double {
         guard totalDistance > 0 else { return 0 }
         return totalEnergyBurned / (totalDistance / 1000)
+    }
+    
+    // 计算步幅 (米/步)
+    var stepLength: Double {
+        guard totalSteps > 0 else { return 0 }
+        return totalDistance / Double(totalSteps)
     }
     
     // 获取起点和终点的可识别位置
@@ -577,5 +789,10 @@ struct RunningWorkout: Identifiable {
         self.totalEnergyBurned = totalEnergyBurned
         self.averageHeartRate = averageHeartRate
         self.routeLocations = routeLocations
+        
+        // 计算默认的平均速度
+        if duration > 0 {
+            self.averageSpeed = totalDistance / duration
+        }
     }
 }
