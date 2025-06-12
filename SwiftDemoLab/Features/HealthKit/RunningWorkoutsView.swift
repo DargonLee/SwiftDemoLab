@@ -490,13 +490,13 @@ struct WorkoutDetailView: View {
                 WorkoutSummaryCard(workout: workout)
                     .padding(.horizontal)
                 
-                // 扩展分析卡片 - 新增
+                // 扩展分析卡片
                 if workout.totalSteps > 0 || workout.elevationGain > 0 {
                     WorkoutAnalysisCard(workout: workout)
                         .padding(.horizontal)
                 }
                 
-                // 环境信息卡片 - 新增
+                // 环境信息卡片
                 if !workout.weatherCondition.isEmpty || !workout.terrainType.isEmpty {
                     WorkoutEnvironmentCard(workout: workout)
                         .padding(.horizontal)
@@ -580,8 +580,14 @@ struct FullScreenMapView: View {
 struct WorkoutSummaryCard: View {
     let workout: RunningWorkout
     
+    // 定义两列网格
+    private let columns = [
+        GridItem(.flexible()),
+        GridItem(.flexible())
+    ]
+    
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 12) {
             // 卡片标题
             HStack {
                 Text("跑步摘要")
@@ -591,69 +597,197 @@ struct WorkoutSummaryCard: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
-            .padding(.horizontal)
-            .padding(.top)
             
             Divider()
-                .padding(.vertical, 10)
+                .padding(.vertical, 8)
             
             // 四项主要数据的网格
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 20) {
-                SummaryItem(
+            LazyVGrid(columns: columns, spacing: 20) {
+                AnalysisItemView(
                     icon: "figure.walk",
-                    value: workout.formattedDistance,
-                    title: "总距离"
+                    title: "总距离",
+                    value: workout.formattedDistance
                 )
                 
-                SummaryItem(
+                AnalysisItemView(
                     icon: "stopwatch",
-                    value: workout.formattedPace,
-                    title: "平均配速"
+                    title: "平均配速",
+                    value: workout.formattedPace
                 )
                 
-                SummaryItem(
+                AnalysisItemView(
                     icon: "clock",
-                    value: workout.formattedDuration,
-                    title: "运动时长"
+                    title: "运动时长",
+                    value: workout.formattedDuration
                 )
                 
-                SummaryItem(
+                AnalysisItemView(
                     icon: "flame",
-                    value: "\(Int(workout.totalEnergyBurned))",
-                    title: "消耗(千卡)"
+                    title: "消耗(千卡)",
+                    value: "\(Int(workout.totalEnergyBurned))"
                 )
             }
-            .padding(.horizontal)
-            .padding(.bottom)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
 }
 
-/// 摘要数据项
-struct SummaryItem: View {
-    let icon: String
-    let value: String
-    let title: String
+/// 跑步分析卡片 - 显示高级分析数据
+struct WorkoutAnalysisCard: View {
+    let workout: RunningWorkout
+    
+    // 定义两列网格
+    private let columns = [
+        GridItem(.flexible()),
+        GridItem(.flexible())
+    ]
     
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 22))
-                .foregroundColor(.blue)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("跑步分析")
+                .font(.headline)
+                .padding(.bottom, 8)
             
-            Text(value)
-                .font(.system(size: 18, weight: .bold))
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
+            LazyVGrid(columns: columns, spacing: 20) {
+                // 步数信息
+                if workout.totalSteps > 0 {
+                    AnalysisItemView(
+                        icon: "figure.walk",
+                        title: "总步数",
+                        value: workout.formattedSteps
+                    )
+                    
+                    AnalysisItemView(
+                        icon: "ruler",
+                        title: "平均步幅",
+                        value: String(format: "%.2f 米", workout.stepLength)
+                    )
+                }
+                
+                // 高度变化信息
+                if workout.elevationGain > 0 || workout.elevationLoss > 0 {
+                    AnalysisItemView(
+                        icon: "arrow.up",
+                        title: "累计爬升",
+                        value: String(format: "%.0f 米", workout.elevationGain)
+                    )
+                    
+                    AnalysisItemView(
+                        icon: "arrow.down",
+                        title: "累计下降",
+                        value: String(format: "%.0f 米", workout.elevationLoss)
+                    )
+                }
+                
+                // 心率信息
+                if workout.maxHeartRate > 0 {
+                    AnalysisItemView(
+                        icon: "heart",
+                        title: "平均心率",
+                        value: String(format: "%d BPM", Int(workout.averageHeartRate))
+                    )
+                    
+                    AnalysisItemView(
+                        icon: "heart.fill",
+                        title: "最大心率",
+                        value: String(format: "%d BPM", Int(workout.maxHeartRate))
+                    )
+                }
+                
+                // 速度信息
+                AnalysisItemView(
+                    icon: "speedometer",
+                    title: "平均速度",
+                    value: workout.formattedSpeed
+                )
+                
+                AnalysisItemView(
+                    icon: "flame",
+                    title: "千卡/公里",
+                    value: String(format: "%.1f", workout.caloriesPerKilometer)
+                )
+            }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+    }
+}
+
+/// 环境信息卡片 - 显示跑步环境数据
+struct WorkoutEnvironmentCard: View {
+    let workout: RunningWorkout
+    
+    // 定义两列网格
+    private let columns = [
+        GridItem(.flexible()),
+        GridItem(.flexible())
+    ]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("跑步环境")
+                .font(.headline)
+                .padding(.bottom, 8)
+            
+            LazyVGrid(columns: columns, spacing: 20) {
+                // 地形信息
+                if !workout.terrainType.isEmpty {
+                    AnalysisItemView(
+                        icon: "mountain.2",
+                        title: "地形类型",
+                        value: workout.terrainType
+                    )
+                    
+                    // 占位视图，保持网格平衡
+                    if workout.weatherCondition.isEmpty {
+                        Color.clear
+                            .frame(height: 0)
+                    }
+                }
+                
+                // 天气信息
+                if !workout.weatherCondition.isEmpty {
+                    AnalysisItemView(
+                        icon: "cloud.sun",
+                        title: "天气状况",
+                        value: workout.weatherCondition
+                    )
+                    
+                    AnalysisItemView(
+                        icon: "thermometer",
+                        title: "温度",
+                        value: String(format: "%.1f°C", workout.temperature)
+                    )
+                    
+                    AnalysisItemView(
+                        icon: "humidity",
+                        title: "湿度",
+                        value: String(format: "%.0f%%", workout.humidity)
+                    )
+                    
+                    // 日出日落时间（如果有数据可以添加）
+                    if !workout.weatherCondition.isEmpty {
+                        AnalysisItemView(
+                            icon: "sun.max",
+                            title: "紫外线指数",
+                            value: "中等"
+                        )
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
 }
 
@@ -744,133 +878,6 @@ struct DetailRow: View {
     }
 }
 
-/// 跑步分析卡片 - 显示高级分析数据
-struct WorkoutAnalysisCard: View {
-    let workout: RunningWorkout
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            Text("跑步分析")
-                .font(.headline)
-                .padding(.bottom, 5)
-            
-            // 步数和步幅信息
-            if workout.totalSteps > 0 {
-                HStack(spacing: 30) {
-                    AnalysisItemView(
-                        icon: "figure.walk",
-                        title: "总步数",
-                        value: workout.formattedSteps
-                    )
-                    
-                    AnalysisItemView(
-                        icon: "ruler",
-                        title: "平均步幅",
-                        value: String(format: "%.2f 米", workout.stepLength)
-                    )
-                }
-                .padding(.vertical, 5)
-            }
-            
-            // 高度变化信息
-            if workout.elevationGain > 0 || workout.elevationLoss > 0 {
-                HStack(spacing: 30) {
-                    AnalysisItemView(
-                        icon: "arrow.up",
-                        title: "累计爬升",
-                        value: String(format: "%.0f 米", workout.elevationGain)
-                    )
-                    
-                    AnalysisItemView(
-                        icon: "arrow.down",
-                        title: "累计下降",
-                        value: String(format: "%.0f 米", workout.elevationLoss)
-                    )
-                }
-                .padding(.vertical, 5)
-            }
-            
-            // 心率信息
-            if workout.maxHeartRate > 0 {
-                HStack(spacing: 30) {
-                    AnalysisItemView(
-                        icon: "heart",
-                        title: "平均心率",
-                        value: String(format: "%d BPM", Int(workout.averageHeartRate))
-                    )
-                    
-                    AnalysisItemView(
-                        icon: "heart.fill",
-                        title: "最大心率",
-                        value: String(format: "%d BPM", Int(workout.maxHeartRate))
-                    )
-                }
-                .padding(.vertical, 5)
-            }
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
-    }
-}
-
-/// 环境信息卡片 - 显示跑步环境数据
-struct WorkoutEnvironmentCard: View {
-    let workout: RunningWorkout
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            Text("跑步环境")
-                .font(.headline)
-                .padding(.bottom, 5)
-            
-            // 地形信息
-            if !workout.terrainType.isEmpty {
-                HStack(spacing: 30) {
-                    AnalysisItemView(
-                        icon: "mountain.2",
-                        title: "地形类型",
-                        value: workout.terrainType
-                    )
-                }
-                .padding(.vertical, 5)
-            }
-            
-            // 天气信息
-            if !workout.weatherCondition.isEmpty {
-                HStack(spacing: 30) {
-                    AnalysisItemView(
-                        icon: "cloud.sun",
-                        title: "天气状况",
-                        value: workout.weatherCondition
-                    )
-                    
-                    AnalysisItemView(
-                        icon: "thermometer",
-                        title: "温度",
-                        value: String(format: "%.1f°C", workout.temperature)
-                    )
-                }
-                .padding(.vertical, 5)
-                
-                HStack(spacing: 30) {
-                    AnalysisItemView(
-                        icon: "humidity",
-                        title: "湿度",
-                        value: String(format: "%.0f%%", workout.humidity)
-                    )
-                }
-                .padding(.vertical, 5)
-            }
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
-    }
-}
-
 /// 分析数据项视图
 struct AnalysisItemView: View {
     let icon: String
@@ -882,7 +889,7 @@ struct AnalysisItemView: View {
             Image(systemName: icon)
                 .font(.system(size: 18))
                 .foregroundColor(.blue)
-                .frame(width: 28, height: 28)
+                .frame(width: 36, height: 36)
                 .background(Color.blue.opacity(0.1))
                 .clipShape(Circle())
             
@@ -892,10 +899,12 @@ struct AnalysisItemView: View {
                     .foregroundColor(.secondary)
                 
                 Text(value)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.system(size: 16, weight: .semibold))
             }
+            Spacer()
         }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
 }
 
