@@ -226,6 +226,7 @@ class WorkoutDataManager: NSObject, ObservableObject {
         // 使用 Swift 并发 API 同时获取所有详细数据
         async let distance = fetchTotalDistance(for: workout)
         async let pace = fetchAveragePace(for: workout)
+        async let speed = fetchAverageSpeed(for: workout)
         async let energy = fetchTotalEnergy(for: workout)
         async let heartRate = fetchAverageHeartRate(for: workout)
         async let locations = fetchRouteLocations(for: workout)
@@ -239,6 +240,9 @@ class WorkoutDataManager: NSObject, ObservableObject {
             runningWorkout.averagePace = try await pace
             runningWorkout.totalEnergyBurned = try await energy
             runningWorkout.averageHeartRate = try await heartRate
+            
+            // 获取平均速度
+            runningWorkout.averageSpeed = try await speed
             
             // 获取路线位置，并限制数量以避免内存问题
             let allLocations = try await locations
@@ -633,6 +637,93 @@ class WorkoutDataManager: NSObject, ObservableObject {
         }
     }
     
+    /// 获取平均速度（米/秒）
+    /// - Parameter workout: 跑步记录
+    /// - Returns: 平均速度
+    private func fetchAverageSpeed(for workout: HKWorkout) async throws -> Double {
+        // 优先使用 workout 对象中可能已有的速度
+        if let totalDistance = workout.totalDistance?.doubleValue(for: .meter()),
+           workout.duration > 0 {
+            return totalDistance / workout.duration
+        }
+        
+        // iOS 16+ 支持 runningSpeed 类型，尝试获取
+        if #available(iOS 16.0, *),
+           let speedType = HKQuantityType.quantityType(forIdentifier: .runningSpeed) {
+            return try await withCheckedThrowingContinuation { continuation in
+                let speedPredicate = HKQuery.predicateForObjects(from: workout)
+                
+                let speedQuery = HKStatisticsQuery(
+                    quantityType: speedType,
+                    quantitySamplePredicate: speedPredicate,
+                    options: .discreteAverage
+                ) { (_, result, error) in
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    
+                    if let result = result, let average = result.averageQuantity() {
+                        let metersPerSecond = average.doubleValue(for: .meter().unitDivided(by: .second()))
+                        continuation.resume(returning: metersPerSecond)
+                    } else {
+                        // 尝试从距离和时间计算
+                        self.calculateSpeedFromDistanceAndTime(workout, continuation: continuation)
+                    }
+                }
+                healthStore.execute(speedQuery)
+            }
+        } else {
+            // 如果不支持 runningSpeed，从距离和时间计算
+            return try await withCheckedThrowingContinuation { continuation in
+                self.calculateSpeedFromDistanceAndTime(workout, continuation: continuation)
+            }
+        }
+    }
+    
+    /// 从距离和时间计算速度
+    /// - Parameters:
+    ///   - workout: 跑步记录
+    ///   - continuation: 异步延续
+    private func calculateSpeedFromDistanceAndTime(_ workout: HKWorkout, continuation: CheckedContinuation<Double, Error>) {
+        // 尝试从 workout 对象直接获取距离
+        if let distance = workout.totalDistance?.doubleValue(for: .meter()),
+           distance > 0 && workout.duration > 0 {
+            // 米/秒
+            let speed = distance / workout.duration
+            continuation.resume(returning: speed)
+            return
+        }
+        
+        // 如果 workout 没有直接提供距离，查询距离
+        guard let distanceType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) else {
+            continuation.resume(returning: 0)
+            return
+        }
+        
+        let distancePredicate = HKQuery.predicateForObjects(from: workout)
+        
+        let distanceQuery = HKStatisticsQuery(
+            quantityType: distanceType,
+            quantitySamplePredicate: distancePredicate
+        ) { (_, result, error) in
+            if let error = error {
+                continuation.resume(throwing: error)
+                return
+            }
+            
+            if let distance = result?.sumQuantity()?.doubleValue(for: .meter()),
+               distance > 0 && workout.duration > 0 {
+                // 米/秒
+                let speed = distance / workout.duration
+                continuation.resume(returning: speed)
+            } else {
+                continuation.resume(returning: 0)
+            }
+        }
+        healthStore.execute(distanceQuery)
+    }
+    
     // MARK: - 生命周期管理
     
     deinit {
@@ -789,10 +880,5 @@ struct RunningWorkout: Identifiable {
         self.totalEnergyBurned = totalEnergyBurned
         self.averageHeartRate = averageHeartRate
         self.routeLocations = routeLocations
-        
-        // 计算默认的平均速度
-        if duration > 0 {
-            self.averageSpeed = totalDistance / duration
-        }
     }
 }
