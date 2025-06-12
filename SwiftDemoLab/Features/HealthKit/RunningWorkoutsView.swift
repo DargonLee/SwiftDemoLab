@@ -287,8 +287,8 @@ struct WorkoutRowView: View {
                     
                     DataItemView(
                         icon: "stopwatch",
-                        title: "配速",
-                        value: "\(workout.formattedPace)/km"
+                        title: "配速(分钟/公里)",
+                        value: workout.formattedPace
                     )
                     
                     // 新增步数显示
