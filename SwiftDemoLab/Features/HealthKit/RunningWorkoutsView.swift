@@ -61,12 +61,12 @@ struct RunningWorkoutsView: View {
     
     /// 检查 HealthKit 授权状态
     private func checkAuthorization() {
-        let status = dataManager.checkAuthorizationStatus()
-        
-        if status == .notDetermined || status == .sharingDenied {
-            showingAuthorization = true
-        } else {
-            refreshData()
+        dataManager.checkDetailedAuthorizationStatus { authorized in
+            if authorized {
+                refreshData()
+            } else {
+                showingAuthorization = true
+            }
         }
     }
     

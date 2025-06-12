@@ -42,10 +42,37 @@ class WorkoutDataManager: NSObject, ObservableObject {
     
     // MARK: - 健康数据授权管理
     
-    /// 检查 HealthKit 授权状态
-    /// - Returns: 当前的 HealthKit 授权状态
-    func checkAuthorizationStatus() -> HKAuthorizationStatus {
-        return healthStore.authorizationStatus(for: HKObjectType.workoutType())
+    /// 检查详细的健康数据授权状态
+    /// - Parameter completion: 授权状态检查结果回调，true 表示已授权，false 表示需要授权
+    func checkDetailedAuthorizationStatus(completion: @escaping (Bool) -> Void) {
+        let typesToRead = getRequiredHealthDataTypes()
+        
+        healthStore.getRequestStatusForAuthorization(toShare: [], read: typesToRead) { [weak self] status, error in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.errorMessage = "获取授权状态失败: \(error.localizedDescription)"
+                    completion(false)
+                    return
+                }
+                
+                switch status {
+                case .unnecessary:
+                    // 已获得所有所需授权
+                    completion(true)
+                case .shouldRequest:
+                    // 需要请求授权
+                    completion(false)
+                case .unknown:
+                    self.errorMessage = "无法确定授权状态"
+                    completion(false)
+                @unknown default:
+                    self.errorMessage = "未知授权状态"
+                    completion(false)
+                }
+            }
+        }
     }
     
     /// 请求 HealthKit 数据访问授权
