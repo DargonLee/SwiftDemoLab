@@ -22,12 +22,16 @@ struct RunningWorkoutsView: View {
         Group {
             if dataManager.isLoading {
                 LoadingView()
-            } else if dataManager.errorMessage != nil {
-                ErrorView(errorMessage: dataManager.errorMessage ?? "", onRetry: refreshData)
+            } else if let errorMessage = dataManager.errorMessage {
+                ErrorView(errorMessage: errorMessage, onRetry: refreshData)
             } else if dataManager.runningWorkouts.isEmpty {
                 EmptyWorkoutsView()
             } else {
-                WorkoutsListView(runningWorkouts: dataManager.runningWorkouts)
+                if #available(iOS 17.0, *) {
+                    WorkoutsListView(runningWorkouts: dataManager.runningWorkouts)
+                } else {
+                    Text("iOS 17.0 以下不支持")
+                }
             }
         }
         .navigationTitle("跑步记录")
@@ -81,13 +85,24 @@ struct RunningWorkoutsView: View {
 /// 加载状态视图
 struct LoadingView: View {
     var body: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.5)
-            
-            Text("加载跑步数据中...")
-                .font(.headline)
-                .foregroundColor(.secondary)
+        if #available(iOS 17.0, *) {
+            // iOS 17 新增的 DefaultLoadingView 样式
+            VStack {
+                ProgressView("加载跑步数据中...")
+                    .controlSize(.large)
+                    .progressViewStyle(.circular)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            // iOS 17 以下的兼容实现
+            VStack(spacing: 20) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                
+                Text("加载跑步数据中...")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 }
@@ -100,27 +115,44 @@ struct ErrorView: View {
     let onRetry: () -> Void
     
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 50))
-                .foregroundColor(.orange)
-            
-            Text("数据加载失败")
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            Text(errorMessage)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button(action: onRetry) {
-                Label("重新加载", systemImage: "arrow.clockwise")
+        if #available(iOS 17.0, *) {
+            // 使用官方的 ContentUnavailableView
+            ContentUnavailableView {
+                Label("数据加载失败", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(errorMessage)
+            } actions: {
+                Button(action: onRetry) {
+                    Label("重新加载", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .symbolVariant(.fill)
+            .symbolRenderingMode(.multicolor)
+        } else {
+            // iOS 17 以下的兼容实现
+            VStack(spacing: 20) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 50))
+                    .foregroundColor(.orange)
+                
+                Text("数据加载失败")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Text(errorMessage)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                Button(action: onRetry) {
+                    Label("重新加载", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            }
+            .padding()
         }
-        .padding()
     }
 }
 
@@ -129,27 +161,51 @@ struct ErrorView: View {
 /// 没有跑步数据时显示的视图
 struct EmptyWorkoutsView: View {
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "figure.run")
-                .font(.system(size: 70))
-                .foregroundColor(.blue.opacity(0.7))
-            
-            Text("暂无跑步记录")
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            Text("记录您的跑步后，数据将显示在这里")
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
+        if #available(iOS 17.0, *) {
+            // 使用官方的 ContentUnavailableView
+            ContentUnavailableView {
+                Label("暂无跑步记录", systemImage: "figure.run")
+            } description: {
+                Text("记录您的跑步后，数据将显示在这里")
+            } actions: {
+                Link(destination: URL(string: "x-apple-health://")!) {
+                    Text("打开健康应用")
+                        .frame(maxWidth: 200)
+                }
+                .buttonStyle(.bordered)
+                .tint(.blue)
+            }
+        } else {
+            // iOS 17 以下的兼容实现
+            VStack(spacing: 20) {
+                Image(systemName: "figure.run")
+                    .font(.system(size: 70))
+                    .foregroundColor(.blue.opacity(0.7))
+                
+                Text("暂无跑步记录")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Text("记录您的跑步后，数据将显示在这里")
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                Link("打开健康应用", destination: URL(string: "x-apple-health://")!)
+                    .buttonStyle(.bordered)
+                    .tint(.blue)
+                    .padding(.top)
+            }
+            .padding()
         }
-        .padding()
     }
 }
 
 // MARK: - 跑步列表视图
 
 /// 跑步记录列表视图
+
+@available(iOS 17.0, *)
 struct WorkoutsListView: View {
     let runningWorkouts: [RunningWorkout]
     
@@ -381,6 +437,7 @@ struct DataItemView: View {
 // MARK: - 跑步详情视图
 
 /// 单次跑步详情视图
+@available(iOS 17.0, *)
 struct WorkoutDetailView: View {
     let workout: RunningWorkout
 //    @State private var region: MKCoordinateRegion
@@ -520,6 +577,7 @@ struct WorkoutDetailView: View {
 }
 
 /// 全屏地图视图
+@available(iOS 17.0, *)
 struct FullScreenMapView: View {
     let cameraPosition: MapCameraPosition
     let workout: RunningWorkout
