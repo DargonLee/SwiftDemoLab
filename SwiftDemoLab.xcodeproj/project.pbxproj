@@ -40,6 +40,16 @@
 		0E5B51212DDB31E10083C732 /* Exceptions for "SwiftDemoLab" folder in "SwiftDemoLab" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Features/ImagePreview/ImagePreviewIndicatorView.swift,
+				Features/ImagePreview/ImagePreviewTransitionParameter.swift,
+				Features/ImagePreview/ImagePreviewViewCell.swift,
+				Features/ImagePreview/ImagePreviewViewController.swift,
+				"Features/ImagePreview/ImagePreviewViewController+Action.swift",
+				"Features/ImagePreview/ImagePreviewViewController+CollectionView.swift",
+				"Features/ImagePreview/ImagePreviewViewController+Transition.swift",
+				Features/ImagePreview/ImagePreviewViewControllerProtocol.swift,
+				Features/ImagePreview/ImagePreviewZoomTransitionAnimator.swift,
+				Features/ImagePreview/ImagePreviewZoomTransitionDelegate.swift,
 				Resources/Info.plist,
 			);
 			target = 0E5B50F82DDB31D90083C732 /* SwiftDemoLab */;
