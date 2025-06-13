@@ -10,6 +10,7 @@
 		0E5B514C2DDB451B0083C732 /* SnapKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0E5B514B2DDB451B0083C732 /* SnapKit */; };
 		0E5B5AFF2DDB4E430083C732 /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = 0E5B5AFE2DDB4E430083C732 /* Inject */; };
 		0E5B5B222DDB50EB0083C732 /* LookinServer in Frameworks */ = {isa = PBXBuildFile; productRef = 0E5B5B212DDB50EB0083C732 /* LookinServer */; };
+		0E6D99762DFBBE8C00A025FA /* SwiftyBeaver in Frameworks */ = {isa = PBXBuildFile; productRef = 0E6D99752DFBBE8C00A025FA /* SwiftyBeaver */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -74,6 +75,7 @@
 				0E5B514C2DDB451B0083C732 /* SnapKit in Frameworks */,
 				0E5B5B222DDB50EB0083C732 /* LookinServer in Frameworks */,
 				0E5B5AFF2DDB4E430083C732 /* Inject in Frameworks */,
+				0E6D99762DFBBE8C00A025FA /* SwiftyBeaver in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -145,6 +147,7 @@
 				0E5B514B2DDB451B0083C732 /* SnapKit */,
 				0E5B5AFE2DDB4E430083C732 /* Inject */,
 				0E5B5B212DDB50EB0083C732 /* LookinServer */,
+				0E6D99752DFBBE8C00A025FA /* SwiftyBeaver */,
 			);
 			productName = SwiftDemoLab;
 			productReference = 0E5B50F92DDB31D90083C732 /* SwiftDemoLab.app */;
@@ -232,6 +235,7 @@
 				0E5B51492DDB450C0083C732 /* XCRemoteSwiftPackageReference "SnapKit" */,
 				0E5B5AFD2DDB4E430083C732 /* XCRemoteSwiftPackageReference "Inject" */,
 				0E5B5B202DDB50EB0083C732 /* XCRemoteSwiftPackageReference "LookinServer" */,
+				0E6D99742DFBBE8C00A025FA /* XCRemoteSwiftPackageReference "SwiftyBeaver" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0E5B50FA2DDB31D90083C732 /* Products */;
@@ -634,6 +638,14 @@
 				minimumVersion = 1.2.8;
 			};
 		};
+		0E6D99742DFBBE8C00A025FA /* XCRemoteSwiftPackageReference "SwiftyBeaver" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SwiftyBeaver/SwiftyBeaver.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.1.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -651,6 +663,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0E5B5B202DDB50EB0083C732 /* XCRemoteSwiftPackageReference "LookinServer" */;
 			productName = LookinServer;
+		};
+		0E6D99752DFBBE8C00A025FA /* SwiftyBeaver */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0E6D99742DFBBE8C00A025FA /* XCRemoteSwiftPackageReference "SwiftyBeaver" */;
+			productName = SwiftyBeaver;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -40,6 +40,212 @@ class WorkoutDataManager: NSObject, ObservableObject {
         super.init()
     }
     
+    /// 注册 HealthKit 后台数据更新监听
+    /// 用于在健康数据发生变化时接收通知并更新应用数据
+    func registerBackgroundObserver() {
+        // 确保已获得授权
+        checkDetailedAuthorizationStatus { authorized in
+            guard authorized else {
+                print("未获得健康数据授权，无法注册后台更新")
+                return
+            }
+            
+            self.registerWorkoutObserver()
+            self.registerStepCountObserver()
+            
+            // 注册其他可能需要的数据类型...
+        }
+    }
+    
+    /// 注册跑步记录观察者
+    private func registerWorkoutObserver() {
+        let workoutType = HKObjectType.workoutType()
+        let predicate = HKQuery.predicateForWorkouts(with: .running)
+        
+        let workoutQuery = HKObserverQuery(
+            sampleType: workoutType,
+            predicate: predicate
+        ) { [weak self] _, completion, error in
+            guard let self = self else {
+                completion()
+                return
+            }
+            
+            if let error = error {
+                print("跑步数据监听出错: \(error.localizedDescription)")
+                completion()
+                return
+            }
+            
+            // 在主线程更新 UI
+            DispatchQueue.main.async {
+                // 增量更新数据
+                self.fetchLatestWorkouts()
+                completion()
+            }
+        }
+        
+        healthStore.execute(workoutQuery)
+        
+        // 启用后台更新
+        healthStore.enableBackgroundDelivery(
+            for: workoutType,
+            frequency: .immediate
+        ) { success, error in
+            if success {
+                print("跑步记录后台更新已启用")
+            } else if let error = error {
+                print("跑步记录后台更新启用失败: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    /// 注册步数记录观察者
+    private func registerStepCountObserver() {
+        guard let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount) else {
+            return
+        }
+        
+        let stepQuery = HKObserverQuery(
+            sampleType: stepType,
+            predicate: nil
+        ) { [weak self] _, completion, error in
+            guard let self = self else {
+                completion()
+                return
+            }
+            
+            if let error = error {
+                print("步数数据监听出错: \(error.localizedDescription)")
+                completion()
+                return
+            }
+            
+            // 当跑步数据已加载时，更新步数
+            if !self.runningWorkouts.isEmpty {
+                DispatchQueue.main.async {
+                    // 仅更新步数相关数据
+                    self.updateWorkoutsStepData()
+                    completion()
+                }
+            } else {
+                completion()
+            }
+        }
+        
+        healthStore.execute(stepQuery)
+        
+        // 启用后台更新
+        healthStore.enableBackgroundDelivery(
+            for: stepType,
+            frequency: .hourly // 步数可以设置为小时级别的更新频率
+        ) { success, error in
+            if success {
+                SwiftyLog.info("步数记录后台更新已启用")
+            } else if let error = error {
+                SwiftyLog.error("步数记录后台更新启用失败: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    /// 获取最新的跑步数据
+    private func fetchLatestWorkouts() {
+        // 使用上次获取数据的时间作为起点
+        let lastSyncDate = UserDefaults.standard.object(forKey: "lastWorkoutSyncDate") as? Date ?? Date.distantPast
+        let predicate = HKQuery.predicateForSamples(withStart: lastSyncDate, end: nil, options: .strictEndDate)
+        
+        // 创建查询
+        let runningPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            HKQuery.predicateForWorkouts(with: .running),
+            predicate
+        ])
+        
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+        
+        let query = HKSampleQuery(
+            sampleType: .workoutType(),
+            predicate: runningPredicate,
+            limit: HKObjectQueryNoLimit,
+            sortDescriptors: [sortDescriptor]
+        ) { [weak self] (_, samples, error) in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("获取最新跑步数据失败: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let workouts = samples as? [HKWorkout], !workouts.isEmpty else {
+                return
+            }
+            
+            // 更新同步时间
+            UserDefaults.standard.set(Date(), forKey: "lastWorkoutSyncDate")
+            
+            // 处理新数据
+            Task {
+                let newWorkouts = await self.processWorkouts(workouts)
+                
+                // 合并新旧数据
+                DispatchQueue.main.async {
+                    // 移除重复项
+                    let existingIds = Set(self.runningWorkouts.map { $0.workout.uuid })
+                    let uniqueNewWorkouts = newWorkouts.filter { !existingIds.contains($0.workout.uuid) }
+                    
+                    if !uniqueNewWorkouts.isEmpty {
+                        self.runningWorkouts.append(contentsOf: uniqueNewWorkouts)
+                        self.runningWorkouts.sort { $0.startDate > $1.startDate }
+                    }
+                }
+            }
+        }
+        
+        healthStore.execute(query)
+    }
+    
+    /// 仅更新现有跑步记录的步数数据
+    private func updateWorkoutsStepData() {
+        Task {
+            for (index, workout) in runningWorkouts.enumerated() {
+                do {
+                    let steps = try await fetchTotalSteps(for: workout.workout)
+                    
+                    // 如果步数有变化，更新数据
+                    if steps != workout.totalSteps {
+                        DispatchQueue.main.async {
+                            self.runningWorkouts[index].totalSteps = steps
+                            
+                                                         // 更新步幅计算
+                             if steps > 0 {
+                                 let newStepLength = self.runningWorkouts[index].totalDistance / Double(steps)
+                                 self.runningWorkouts[index].stepLength = newStepLength
+                             }
+                        }
+                    }
+                } catch {
+                    print("更新步数数据失败: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// 处理后台健康数据更新
+    /// 应当在 AppDelegate 的 application(_:didFinishLaunchingWithOptions:) 方法中调用
+    /// - Parameter launchOptions: 启动选项
+    /// - Returns: 是否处理了健康数据更新
+    func handleBackgroundLaunch(with launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // 检查是否由健康数据更新唤醒
+        if let options = launchOptions,
+           options[.location] == nil, // 排除位置更新唤醒
+           options[.bluetoothCentrals] == nil {
+            
+            // 可能是健康数据更新触发，执行数据刷新
+            fetchLatestWorkouts()
+            return true
+        }
+        return false
+    }
+    
     // MARK: - 健康数据授权管理
     
     /// 检查详细的健康数据授权状态
@@ -213,7 +419,7 @@ class WorkoutDataManager: NSObject, ObservableObject {
     /// 异步处理多个跑步记录
     /// - Parameter workouts: 从 HealthKit 获取的原始跑步记录
     @MainActor
-    private func processWorkouts(_ workouts: [HKWorkout]) async {
+    private func processWorkouts(_ workouts: [HKWorkout]) async -> [RunningWorkout] {
         var results: [RunningWorkout] = []
         
         // 使用 TaskGroup 并发处理所有 workout
@@ -234,6 +440,7 @@ class WorkoutDataManager: NSObject, ObservableObject {
         
         // 所有数据获取完成后排序并更新 UI
         self.runningWorkouts = results.sorted { $0.startDate > $1.startDate }
+        return results
     }
     
     /// 异步获取单次跑步的详细信息
@@ -846,9 +1053,12 @@ struct RunningWorkout: Identifiable {
         return totalEnergyBurned / (totalDistance / 1000)
     }
     
+    // 步幅 (米/步)
+    var stepLength: Double = 0
+    
     // 计算步幅 (米/步)
-    var stepLength: Double {
-        guard totalSteps > 0 else { return 0 }
+    var calculatedStepLength: Double {
+        guard totalSteps > 0 else { return stepLength }
         return totalDistance / Double(totalSteps)
     }
     

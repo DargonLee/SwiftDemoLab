@@ -6,6 +6,8 @@
 //
 
 import UIKit
+import SwiftyBeaver
+let SwiftyLog = SwiftyBeaver.self
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -18,7 +20,32 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         //Or for macOS:
         Bundle(path: "/Applications/InjectionIII.app/Contents/Resources/macOSInjection.bundle")?.load()
 #endif
+        debugPrint(NSHomeDirectory())
+        // 日志配置
+        setupLog()
+        
+        // 检查是否由健康数据更新唤醒
+        setupHealthObserve(launchOptions: launchOptions)
+        
         return true
+    }
+    
+    func setupLog() {
+        // 设置 SwiftyBeaver 日志
+        let console = ConsoleDestination()  // log to Xcode Console
+        let file = FileDestination() // log to default swiftybeaver.log file
+        console.format = "$DHH:mm:ss$d $L $M"
+        console.useTerminalColors = true
+        SwiftyLog.addDestination(console)
+        SwiftyLog.addDestination(file)
+    }
+    
+    func setupHealthObserve(launchOptions: [UIApplication.LaunchOptionsKey: Any]?) {
+        if let options = launchOptions,
+           options[.location] == nil, // 排除位置更新唤醒
+           options[.bluetoothCentrals] == nil {
+            // 可能是健康数据更新触发
+        }
     }
 
     // MARK: UISceneSession Lifecycle
