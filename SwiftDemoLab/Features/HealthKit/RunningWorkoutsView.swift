@@ -563,6 +563,13 @@ struct WorkoutDetailView: View {
                 WorkoutDetailsCard(workout: workout)
                     .padding(.horizontal)
                 
+                // 心率数据图表
+                if !workout.heartRateSamples.isEmpty {
+                    HeartRateChartView(workout: workout)
+                        .padding(.horizontal)
+                        .frame(height: 250)
+                }
+                
                 Spacer(minLength: 30)
             }
             .padding(.vertical)
@@ -963,6 +970,325 @@ struct AnalysisItemView: View {
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
+    }
+}
+
+// MARK: - 心率图表视图
+
+/// 心率数据可视化图表
+struct HeartRateChartView: View {
+    let workout: RunningWorkout
+    
+    // 计算心率数据的统计信息
+    private var heartRateSamples: [(timestamp: Date, value: Double)] {
+        workout.heartRateSamples
+    }
+    
+    private var minHeartRate: Double {
+        heartRateSamples.map { $0.value }.min() ?? 0
+    }
+    
+    private var maxHeartRate: Double {
+        heartRateSamples.map { $0.value }.max() ?? 0
+    }
+    
+    private var avgHeartRate: Double {
+        let sum = heartRateSamples.reduce(0) { $0 + $1.value }
+        return sum / Double(heartRateSamples.count)
+    }
+    
+    // 心率区间颜色
+    private func colorForHeartRate(_ value: Double) -> Color {
+        if value < 120 {
+            return .green
+        } else if value < 150 {
+            return .orange
+        } else {
+            return .red
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("心率数据")
+                .font(.headline)
+            
+            // 心率统计信息
+            HStack {
+                StatView(title: "平均", value: "\(Int(avgHeartRate))", unit: "BPM", color: .blue)
+                Spacer()
+                StatView(title: "最低", value: "\(Int(minHeartRate))", unit: "BPM", color: .green)
+                Spacer()
+                StatView(title: "最高", value: "\(Int(maxHeartRate))", unit: "BPM", color: .red)
+            }
+            .padding(.bottom, 8)
+            
+            // 心率曲线图
+            GeometryReader { geometry in
+                ZStack(alignment: .bottom) {
+                    // 背景网格
+                    VStack(spacing: 0) {
+                        ForEach(0..<5) { i in
+                            Divider()
+                            Spacer()
+                                .frame(height: geometry.size.height / 5 - 1)
+                        }
+                    }
+                    
+                    // 心率曲线
+                    Path { path in
+                        let width = geometry.size.width
+                        let height = geometry.size.height
+                        let maxY = maxHeartRate * 1.1 // 给顶部留出一些空间
+                        let minY = max(0, minHeartRate * 0.9) // 给底部留出一些空间
+                        let yRange = maxY - minY
+                        
+                        // 确保有数据点
+                        guard !heartRateSamples.isEmpty, yRange > 0 else { return }
+                        
+                        // 计算时间范围
+                        let startTime = heartRateSamples.first!.timestamp.timeIntervalSince1970
+                        let endTime = heartRateSamples.last!.timestamp.timeIntervalSince1970
+                        let timeRange = endTime - startTime
+                        
+                        // 绘制路径
+                        var isFirst = true
+                        for sample in heartRateSamples {
+                            let timePosition = (sample.timestamp.timeIntervalSince1970 - startTime) / timeRange
+                            let x = width * CGFloat(timePosition)
+                            
+                            let normalizedValue = (sample.value - minY) / yRange
+                            let y = height - (height * CGFloat(normalizedValue))
+                            
+                            if isFirst {
+                                path.move(to: CGPoint(x: x, y: y))
+                                isFirst = false
+                            } else {
+                                path.addLine(to: CGPoint(x: x, y: y))
+                            }
+                        }
+                    }
+                    .stroke(Color.red, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    
+                    // 心率点
+                    ForEach(0..<heartRateSamples.count, id: \.self) { index in
+                        let sample = heartRateSamples[index]
+                        let maxY = maxHeartRate * 1.1
+                        let minY = max(0, minHeartRate * 0.9)
+                        let yRange = maxY - minY
+                        
+                        let startTime = heartRateSamples.first!.timestamp.timeIntervalSince1970
+                        let endTime = heartRateSamples.last!.timestamp.timeIntervalSince1970
+                        let timeRange = endTime - startTime
+                        
+                        let timePosition = (sample.timestamp.timeIntervalSince1970 - startTime) / timeRange
+                        let x = geometry.size.width * CGFloat(timePosition)
+                        
+                        let normalizedValue = (sample.value - minY) / yRange
+                        let y = geometry.size.height - (geometry.size.height * CGFloat(normalizedValue))
+                        
+                        // 每10个点显示一个点，避免过于密集
+                        if index % 10 == 0 {
+                            Circle()
+                                .fill(colorForHeartRate(sample.value))
+                                .frame(width: 6, height: 6)
+                                .position(x: x, y: y)
+                        }
+                    }
+                }
+            }
+            
+            // 时间轴标签
+            HStack {
+                if !heartRateSamples.isEmpty {
+                    Text(formatTime(heartRateSamples.first!.timestamp))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    if heartRateSamples.count > 2 {
+                        let middleIndex = heartRateSamples.count / 2
+                        Text(formatTime(heartRateSamples[middleIndex].timestamp))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Text(formatTime(heartRateSamples.last!.timestamp))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.top, 4)
+            
+            // 心率区间分布
+            VStack(alignment: .leading, spacing: 8) {
+                Text("心率区间分布")
+                    .font(.subheadline)
+                    .padding(.top, 8)
+                
+                ForEach(Array(workout.heartRateZones.keys.sorted()), id: \.self) { zone in
+                    if let percentage = workout.heartRateZones[zone] {
+                        HStack {
+                            Text(zone)
+                                .font(.caption)
+                                .frame(width: 120, alignment: .leading)
+                            
+                            // 进度条
+                            GeometryReader { geometry in
+                                ZStack(alignment: .leading) {
+                                    // 背景
+                                    Rectangle()
+                                        .fill(Color.gray.opacity(0.2))
+                                        .frame(height: 8)
+                                        .cornerRadius(4)
+                                    
+                                    // 前景
+                                    Rectangle()
+                                        .fill(zoneColor(for: zone))
+                                        .frame(width: geometry.size.width * CGFloat(percentage) / 100, height: 8)
+                                        .cornerRadius(4)
+                                }
+                            }
+                            .frame(height: 8)
+                            
+                            // 百分比
+                            Text(String(format: "%.1f%%", percentage))
+                                .font(.caption)
+                                .frame(width: 50, alignment: .trailing)
+                        }
+                    }
+                }
+            }
+            
+            // 心率变化趋势分析
+            if heartRateSamples.count > 10 {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("心率趋势分析")
+                        .font(.subheadline)
+                        .padding(.top, 12)
+                    
+                    Text(heartRateTrendAnalysis())
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+    }
+    
+    // 心率区间颜色
+    private func zoneColor(for zone: String) -> Color {
+        if zone.contains("恢复") {
+            return .green
+        } else if zone.contains("有氧耐力") {
+            return .blue
+        } else if zone.contains("有氧力量") {
+            return .yellow
+        } else if zone.contains("无氧阈值") {
+            return .orange
+        } else {
+            return .red
+        }
+    }
+    
+    // 分析心率变化趋势
+    private func heartRateTrendAnalysis() -> String {
+        guard heartRateSamples.count > 10 else {
+            return "数据点不足，无法分析趋势"
+        }
+        
+        // 将心率数据分为前中后三段
+        let totalCount = heartRateSamples.count
+        let firstThird = Array(heartRateSamples[0..<(totalCount/3)])
+        let middleThird = Array(heartRateSamples[(totalCount/3)..<(2*totalCount/3)])
+        let lastThird = Array(heartRateSamples[(2*totalCount/3)..<totalCount])
+        
+        // 计算各段平均心率
+        let firstAvg = firstThird.reduce(0.0) { $0 + $1.value } / Double(firstThird.count)
+        let middleAvg = middleThird.reduce(0.0) { $0 + $1.value } / Double(middleThird.count)
+        let lastAvg = lastThird.reduce(0.0) { $0 + $1.value } / Double(lastThird.count)
+        
+        // 分析心率变化趋势
+        var analysis = "运动过程中，您的心率呈现"
+        
+        if abs(firstAvg - middleAvg) < 5 && abs(middleAvg - lastAvg) < 5 {
+            analysis += "稳定状态，心率波动较小，表明运动强度保持均衡。"
+        } else {
+            if firstAvg < middleAvg {
+                analysis += "前期逐渐上升"
+            } else if firstAvg > middleAvg {
+                analysis += "前期逐渐下降"
+            }
+            
+            if middleAvg < lastAvg {
+                analysis += "，后期继续上升"
+            } else if middleAvg > lastAvg {
+                analysis += "，后期逐渐下降"
+            }
+            
+            analysis += "的趋势。"
+            
+            // 添加额外分析
+            if firstAvg < middleAvg && middleAvg < lastAvg {
+                analysis += " 整体心率持续上升，可能表明运动强度逐渐增加或体力消耗累积。"
+            } else if firstAvg > middleAvg && middleAvg > lastAvg {
+                analysis += " 整体心率持续下降，可能表明适应了运动强度或逐渐放松。"
+            } else if firstAvg < middleAvg && middleAvg > lastAvg {
+                analysis += " 心率先升后降，典型的热身-运动-放松模式，是良好的运动节奏。"
+            } else if firstAvg > middleAvg && middleAvg < lastAvg {
+                analysis += " 心率先降后升，可能表明中途调整了运动强度或地形变化。"
+            }
+        }
+        
+        // 添加心率区间停留时间分析
+        let timeInMaxZone = workout.heartRateZones["最大心率区间 (90-100%)"] ?? 0
+        if timeInMaxZone > 20 {
+            analysis += " 您在最大心率区间停留时间较长，属于高强度训练。"
+        } else if workout.heartRateZones["无氧阈值区间 (80-90%)"] ?? 0 > 30 {
+            analysis += " 您在无氧阈值区间停留较多，这有助于提高耐力和心肺功能。"
+        }
+        
+        return analysis
+    }
+    
+    // 格式化时间为小时:分钟
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+}
+
+/// 统计数据视图
+struct StatView: View {
+    let title: String
+    let value: String
+    let unit: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Text(value)
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(color)
+            
+            Text(unit)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
     }
 }
 

@@ -467,6 +467,7 @@ class WorkoutDataManager: NSObject, ObservableObject {
         async let steps = fetchTotalSteps(for: workout)
         async let elevationData = fetchElevationData(for: workout)
         async let maxHR = fetchMaxHeartRate(for: workout)
+        async let heartRateSamples = fetchHeartRateSamples(for: workout)
         
         do {
             // 等待所有请求完成并填充数据
@@ -490,6 +491,9 @@ class WorkoutDataManager: NSObject, ObservableObject {
             runningWorkout.elevationGain = elevation.gain
             runningWorkout.elevationLoss = elevation.loss
             runningWorkout.maxHeartRate = try await maxHR
+            
+            // 获取心率数据点
+            runningWorkout.heartRateSamples = try await heartRateSamples
             
             // 如果有路线数据，尝试获取天气和地形信息
             if let firstLocation = runningWorkout.routeLocations.first {
@@ -871,6 +875,53 @@ class WorkoutDataManager: NSObject, ObservableObject {
         }
     }
     
+    /// 获取跑步过程中的心率数据点
+    /// - Parameter workout: 跑步记录
+    /// - Returns: 心率数据点数组，包含时间戳和心率值
+    func fetchHeartRateSamples(for workout: HKWorkout) async throws -> [(timestamp: Date, value: Double)] {
+        guard let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
+            return []
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            // 创建心率查询谓词，限定在跑步时间段内
+            let startDatePredicate = HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: .strictStartDate)
+            let workoutPredicate = HKQuery.predicateForObjects(from: workout)
+            let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [startDatePredicate, workoutPredicate])
+            
+            // 按时间排序
+            let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+            
+            // 查询心率数据
+            let heartRateQuery = HKSampleQuery(
+                sampleType: heartRateType,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [sortDescriptor]
+            ) { (_, samples, error) in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                
+                guard let heartRateSamples = samples as? [HKQuantitySample], !heartRateSamples.isEmpty else {
+                    continuation.resume(returning: [])
+                    return
+                }
+                
+                // 转换为时间戳和心率值的数组
+                let heartRateData = heartRateSamples.map { sample in
+                    let heartRate = sample.quantity.doubleValue(for: HKUnit.count().unitDivided(by: .minute()))
+                    return (timestamp: sample.startDate, value: heartRate)
+                }
+                
+                continuation.resume(returning: heartRateData)
+            }
+            
+            self.healthStore.execute(heartRateQuery)
+        }
+    }
+    
     /// 获取平均速度（米/秒）
     /// - Parameter workout: 跑步记录
     /// - Returns: 平均速度
@@ -1005,6 +1056,7 @@ struct RunningWorkout: Identifiable {
     var temperature: Double = 0       // 温度 (摄氏度)
     var humidity: Double = 0          // 湿度
     var terrainType: String = ""      // 地形类型 (平地/山地/城市等)
+    var heartRateSamples: [(timestamp: Date, value: Double)] = [] // 心率数据点
     
     // 格式化距离显示
     var formattedDistance: String {
@@ -1099,6 +1151,49 @@ struct RunningWorkout: Identifiable {
         } else {
             return "高强度"
         }
+    }
+    
+    // 心率区间分布
+    var heartRateZones: [String: Double] {
+        guard !heartRateSamples.isEmpty else { return [:] }
+        
+        // 定义心率区间
+        let zones = [
+            "恢复区间 (50-60%)": (50, 60),
+            "有氧耐力区间 (60-70%)": (60, 70),
+            "有氧力量区间 (70-80%)": (70, 80),
+            "无氧阈值区间 (80-90%)": (80, 90),
+            "最大心率区间 (90-100%)": (90, 100)
+        ]
+        
+        // 假设最大心率为 220 - 年龄，这里使用 30 岁作为默认值
+        // 实际应用中应该从用户配置文件获取年龄
+        let maxHeartRate = 220 - 30
+        
+        var distribution: [String: Int] = [:]
+        zones.keys.forEach { distribution[$0] = 0 }
+        
+        // 统计每个心率样本所在区间
+        for sample in heartRateSamples {
+            let percentage = (sample.value / Double(maxHeartRate)) * 100
+            
+            for (zone, range) in zones {
+                if percentage >= Double(range.0) && percentage < Double(range.1) {
+                    distribution[zone, default: 0] += 1
+                    break
+                }
+            }
+        }
+        
+        // 计算百分比分布
+        let total = Double(heartRateSamples.count)
+        var percentageDistribution: [String: Double] = [:]
+        
+        for (zone, count) in distribution {
+            percentageDistribution[zone] = Double(count) / total * 100
+        }
+        
+        return percentageDistribution
     }
     
     init(workout: HKWorkout,

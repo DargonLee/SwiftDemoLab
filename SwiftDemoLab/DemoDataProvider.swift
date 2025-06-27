@@ -25,7 +25,8 @@ struct DemoDataProvider {
                 DemoItem(title: "测试页面", desc: "TestViewController 示例", controllerType: TestViewController.self),
                 DemoItem(title: "字体动画", desc: "字体变大或者变小有动画效果", controllerType: FontAnimateViewController.self),
                 DemoItem(title: "Emoji测试", desc: "渲染emoji表情", controllerType: EmojiViewController.self),
-                DemoItem(title: "字体动画", desc: "字体变大或者变小有动画效果", controllerType: FontAnimateViewController.self)
+                DemoItem(title: "字体动画", desc: "字体变大或者变小有动画效果", controllerType: FontAnimateViewController.self),
+                DemoItem(title: "悬浮控制器", desc: "拖动全屏下拉悬浮", controllerType: TestBottomSheetViewController.self)
             ]),
             DemoSection(title: "粒子动画", items: [
                 DemoItem(title: "散花", desc: "散花动画示例", controllerType: FlowerEffectViewController.self),
@@ -35,6 +36,7 @@ struct DemoDataProvider {
                 DemoItem(title: "HealthKit", desc: "HealthKit的数据同步 Demo", controllerType: HealthKitViewController.self),
                 DemoItem(title: "CAGradientLayer1", desc: "CAGradientLayer的使用", controllerType: CAGradientLayerViewController.self),
                 DemoItem(title: "CAGradientLayer2", desc: "CAGradientLayer的使用", controllerType: CAGradientLayerViewController2.self),
+                DemoItem(title: "UseSwiftUIWithUIKit", desc: "SwiftUI和UIKit混编", controllerType: HostingConfigurationViewController.self)
             ])
         ]
     }
