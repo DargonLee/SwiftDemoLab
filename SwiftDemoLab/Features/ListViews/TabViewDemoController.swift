@@ -128,7 +128,7 @@ class TabViewDemoController: UIViewController {
         sections.append(Section(type: .healthApp, title: "关联健康应用", rows: healthAppRows))
         
         // 导入文件部分
-        sections.append(Section(type: .importFile, title: nil, rows: [.importFile]))
+        sections.append(Section(type: .importFile, title: "导入文件", rows: [.importFile]))
         
         // 已导入文件部分
         let fileRows: [RowType] = importedFiles.map { .importedFile($0) }
@@ -201,6 +201,11 @@ extension TabViewDemoController: UITableViewDataSource {
             cell.helpButton.setImage(UIImage(systemName: "questionmark.circle"), for: .normal)
             cell.helpButton.setTitle(nil, for: .normal)
             
+            // 添加圆角
+            cell.contentView.layer.cornerRadius = 12
+            cell.contentView.layer.masksToBounds = true
+            cell.contentView.layer.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+            
             return cell
             
         case .importedFile(let file):
@@ -254,9 +259,17 @@ extension TabViewDemoController: UITableViewDelegate {
         
         let headerView = UIView()
         headerView.backgroundColor = .color("#19191E")
-        headerView.layer.cornerRadius = 12
-        headerView.layer.masksToBounds = true
-        headerView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        
+        // 根据section类型设置不同的圆角
+        if sections[section].type == .healthApp {
+            headerView.layer.cornerRadius = 12
+            headerView.layer.masksToBounds = true
+            headerView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        } else if sections[section].type == .importFile {
+            headerView.layer.cornerRadius = 12
+            headerView.layer.masksToBounds = true
+            headerView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        }
         
         let label = UILabel()
         label.text = title
@@ -276,12 +289,17 @@ extension TabViewDemoController: UITableViewDelegate {
         return sections[section].title == nil ? 0 : 40
     }
     
-    func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
-        return UIView() // 空视图
+    func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
+        if section == 0 || section == 1 { // 健康应用和导入文件section底部间距
+            return 20
+        }
+        return 10 // 其他section底部间距
     }
     
-    func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
-        return section == 0 ? 20 : 10 // 第一个section底部间距更大
+    func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
+        let footerView = UIView()
+        footerView.backgroundColor = .clear
+        return footerView
     }
     
     private func showImportActionSheet() {
