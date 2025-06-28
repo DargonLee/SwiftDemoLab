@@ -26,7 +26,8 @@ struct DemoDataProvider {
                 DemoItem(title: "字体动画", desc: "字体变大或者变小有动画效果", controllerType: FontAnimateViewController.self),
                 DemoItem(title: "Emoji测试", desc: "渲染emoji表情", controllerType: EmojiViewController.self),
                 DemoItem(title: "字体动画", desc: "字体变大或者变小有动画效果", controllerType: FontAnimateViewController.self),
-                DemoItem(title: "悬浮控制器", desc: "拖动全屏下拉悬浮", controllerType: TestBottomSheetViewController.self)
+                DemoItem(title: "悬浮控制器", desc: "拖动全屏下拉悬浮", controllerType: TestBottomSheetViewController.self),
+                DemoItem(title: "列表控制器", desc: "UITableView使用", controllerType: TabViewDemoController.self)
             ]),
             DemoSection(title: "粒子动画", items: [
                 DemoItem(title: "散花", desc: "散花动画示例", controllerType: FlowerEffectViewController.self),
