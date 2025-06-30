@@ -30,6 +30,7 @@ struct DemoDataProvider {
                 DemoItem(title: "列表控制器", desc: "UITableView使用", controllerType: TabViewDemoController.self),
                 DemoItem(title: "StackView布局 1", desc: "UIStackView使用", controllerType: StackViewTestController.self),
                 DemoItem(title: "StackView布局 2", desc: "UIStackView增强使用", controllerType: EnhancedStackViewTestController.self),
+                DemoItem(title: "控制器弹出", desc: "modalPresentationStyle", controllerType: PresentationStyleTestController.self),
             ]),
             DemoSection(title: "粒子动画", items: [
                 DemoItem(title: "散花", desc: "散花动画示例", controllerType: FlowerEffectViewController.self),

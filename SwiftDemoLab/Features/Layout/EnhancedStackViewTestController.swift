@@ -242,6 +242,7 @@ class EnhancedStackViewTestController: UIViewController {
         case .center: alignmentStr = "Center"
         case .trailing: alignmentStr = "Trailing"
         case .bottom: alignmentStr = "Bottom"
+        case .lastBaseline:alignmentStr = "Last Baseline"
         @unknown default: alignmentStr = "Unknown"
         }
         
