@@ -32,6 +32,7 @@ struct DemoDataProvider {
                 DemoItem(title: "StackView布局 2", desc: "UIStackView增强使用", controllerType: EnhancedStackViewTestController.self),
                 DemoItem(title: "控制器弹出", desc: "modalPresentationStyle", controllerType: PresentationStyleTestController.self),
                 DemoItem(title: "折叠控制器", desc: "tableView实现", controllerType: CollapseController.self),
+                DemoItem(title: "AppStore", desc: "UICollectionViewCompositionalLayout实现", controllerType: AppStoreViewController.self),
             ]),
             DemoSection(title: "粒子动画", items: [
                 DemoItem(title: "散花", desc: "散花动画示例", controllerType: FlowerEffectViewController.self),
