@@ -24,6 +24,7 @@ final class SegmentedSliderControlView: UIView {
         view.layer.borderColor = UIColor(hex: "#03DCC2").cgColor
         return view
     }()
+    private var nodeViews: [UIView] = []
     private let labelTexts = ["1", "3", "5"]
     private lazy var bottomStack: UIStackView = {
         let stack = UIStackView()
@@ -34,6 +35,12 @@ final class SegmentedSliderControlView: UIView {
         return stack
     }()
     private var panGesture: UIPanGestureRecognizer!
+    private var availableWidth: CGFloat {
+        let value = trackView.bounds.size.width - thumbButton.bounds.size.width
+        return value
+    }
+    private var totalCount: Int = 0
+        
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -50,6 +57,17 @@ final class SegmentedSliderControlView: UIView {
         trackView.snp.makeConstraints { make in
             make.top.left.right.equalToSuperview()
             make.height.equalTo(32)
+        }
+        
+        if let lastText = labelTexts.last, let count = Int(lastText) {
+            totalCount = count
+            for _ in 0..<count {
+                let nodeView = UIView()
+                nodeView.backgroundColor = UIColor.systemRed.withAlphaComponent(0.3)
+                nodeView.layer.cornerRadius = 6
+                trackView.addSubview(nodeView)
+                nodeViews.append(nodeView)
+            }
         }
         
         addSubview(bottomStack)
@@ -99,4 +117,29 @@ final class SegmentedSliderControlView: UIView {
             break
         }
     }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        
+        // 初始位置
+        let startX = trackView.minX  + trackView.height
+        for (i, node) in nodeViews.enumerated() {
+            let ratio = totalCount == 0 ? 0 : CGFloat(i) / CGFloat(totalCount)
+            let x = startX + ratio * availableWidth
+            let y = trackView.minY + trackView.height / 2
+            node.bounds.size = CGSize(width: 12, height: 12)
+            node.center = CGPoint(x: x, y: y)
+        }
+    }
+        
+}
+
+private extension UIView {
+    var minX: CGFloat { frame.minX }
+    var maxX: CGFloat { frame.maxX }
+    var minY: CGFloat { frame.minY }
+    var maxY: CGFloat { frame.maxY }
+    var midY: CGFloat { frame.midY }
+    var width: CGFloat { frame.width }
+    var height: CGFloat { frame.height }
 }
