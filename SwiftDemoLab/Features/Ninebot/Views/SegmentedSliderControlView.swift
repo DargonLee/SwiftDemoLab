@@ -16,7 +16,7 @@ final class SegmentedSliderControlView: UIView {
         view.layer.cornerRadius = 15
         return view
     }()
-    private lazy var thumbView: UIButton = {
+    private lazy var thumbButton: UIButton = {
         let view = UIButton()
         view.setImage(UIImage(named: "thumb.icon"), for: .normal)
         view.layer.cornerRadius = 16
@@ -33,6 +33,7 @@ final class SegmentedSliderControlView: UIView {
         stack.distribution = .equalSpacing
         return stack
     }()
+    private var panGesture: UIPanGestureRecognizer!
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -62,12 +63,14 @@ final class SegmentedSliderControlView: UIView {
             bottomStack.addArrangedSubview(label)
         }
         
-        trackView.addSubview(thumbView)
-        thumbView.snp.makeConstraints { make in
+        trackView.addSubview(thumbButton)
+        thumbButton.snp.makeConstraints { make in
             make.centerY.equalToSuperview()
             make.width.height.equalTo(32)
             make.left.equalToSuperview().offset(16) // 初始位置
         }
+        panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        thumbButton.addGestureRecognizer(panGesture)
     }
     
     private func createLabel(text: String) -> UILabel {
@@ -76,5 +79,24 @@ final class SegmentedSliderControlView: UIView {
         label.font = .systemFont(ofSize: 12, weight: .medium)
         label.textColor = UIColor(hex: "#1E253D")
         return label
+    }
+    
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        let point = gesture.location(in: self)
+        
+        switch gesture.state {
+        case .began, .changed:
+            // 限制在轨道范围内，考虑滑块半径
+            print("手势位置: \(point)")
+            // 更新活动轨道预览
+            
+            // 预览即将选中的值
+            
+        case .ended, .cancelled, .failed:
+            print("手势结束或取消")
+            
+        default:
+            break
+        }
     }
 }
