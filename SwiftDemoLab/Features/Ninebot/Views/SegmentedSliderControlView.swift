@@ -10,8 +10,8 @@ import SnapKit
 
 // MARK: - SegmentedSliderControlViewDelegate
 protocol SegmentedSliderControlViewDelegate: AnyObject {
-    func segmentedSlider(_ slider: SegmentedSliderControlView, didSelectValue value: Int)
     func segmentedSlider(_ slider: SegmentedSliderControlView, didChangeValue value: Int)
+    func segmentedSlider(_ slider: SegmentedSliderControlView, didSelectValue value: Int)
 }
 
 // MARK: - SegmentedSliderControlView
@@ -36,18 +36,11 @@ final class SegmentedSliderControlView: UIView {
     // MARK: - Properties
     weak var delegate: SegmentedSliderControlViewDelegate?
     
-    private var currentValue: Int = 1 {
+    private var currentValue: Int = 2 {
         didSet {
             if oldValue != currentValue {
+                updateVisualState()
                 delegate?.segmentedSlider(self, didChangeValue: currentValue)
-            }
-        }
-    }
-    
-    private var selectedValue: Int = 1 {
-        didSet {
-            if oldValue != selectedValue {
-                delegate?.segmentedSlider(self, didSelectValue: selectedValue)
             }
         }
     }
@@ -141,7 +134,7 @@ final class SegmentedSliderControlView: UIView {
         thumbButton.snp.makeConstraints { make in
             make.centerY.equalToSuperview()
             make.width.height.equalTo(Constants.thumbSize)
-            make.left.equalToSuperview().offset(Constants.thumbSize / 2)
+            make.left.equalToSuperview()
         }
     }
     
@@ -190,7 +183,8 @@ final class SegmentedSliderControlView: UIView {
             handlePanChanged(translation: translation)
             
         case .ended, .cancelled, .failed:
-            handlePanEnded()
+            let velocity = gesture.velocity(in: self)
+            handlePanEnded(velocity: velocity)
             
         default:
             break
@@ -218,11 +212,12 @@ final class SegmentedSliderControlView: UIView {
         panGesture.setTranslation(.zero, in: self)
     }
     
-    private func handlePanEnded() {
-        // 吸附到最近的节点
-        let targetValue = findNearestValue()
-        animateToValue(targetValue)
-        selectedValue = targetValue
+    private func handlePanEnded(velocity: CGPoint) {
+        // 计算基于速度的目标值
+        let targetValue = calculateTargetValueWithVelocity(velocity)
+        animateToValueWithVelocity(targetValue, velocity: velocity)
+        currentValue = targetValue
+        delegate?.segmentedSlider(self, didSelectValue: currentValue)
     }
     
     // MARK: - Helper Methods
@@ -247,11 +242,89 @@ final class SegmentedSliderControlView: UIView {
         return currentValue
     }
     
+    private func calculateTargetValueWithVelocity(_ velocity: CGPoint) -> Int {
+        let velocityThreshold: CGFloat = 300 // 降低速度阈值，让惯性更容易触发
+        
+        // 如果速度很小，直接吸附到最近的节点
+        if abs(velocity.x) < velocityThreshold {
+            return findNearestValue()
+        }
+        
+        // 根据速度方向计算目标值
+        let currentPosition = thumbButton.center.x
+        let leftInset = Constants.nodeLeftInset
+        let rightInset = Constants.nodeRightInset
+        let availableWidth = trackView.bounds.width - leftInset - rightInset
+        
+        // 计算当前位置对应的值
+        let progress = (currentPosition - leftInset) / availableWidth
+        let currentValueFloat = progress * CGFloat(maxValue - 1) + 1
+        
+        // 根据速度大小和方向计算目标值
+        let velocityMagnitude = abs(velocity.x)
+        let velocityFactor = min(velocityMagnitude / 1000, 2.0) // 限制最大影响因子
+        
+        var targetValueFloat = currentValueFloat
+        
+        if velocity.x > 0 {
+            // 向右滑动，值增加
+            let increment = velocityFactor
+            targetValueFloat = min(CGFloat(maxValue), currentValueFloat + increment)
+        } else {
+            // 向左滑动，值减少
+            let decrement = velocityFactor
+            targetValueFloat = max(1, currentValueFloat - decrement)
+        }
+        
+        // 四舍五入到最近的整数值
+        let targetValue = Int(round(targetValueFloat))
+        return max(1, min(maxValue, targetValue))
+    }
+    
     private func animateToValue(_ value: Int) {
         let targetX = calculatePositionFromValue(value)
         
         UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0.5, options: .curveEaseOut) {
             self.thumbButton.center.x = targetX
+        }
+    }
+    
+    private func animateToValueWithVelocity(_ value: Int, velocity: CGPoint) {
+        let targetX = calculatePositionFromValue(value)
+        let velocityMagnitude = abs(velocity.x)
+        
+        // 根据速度调整动画参数
+        let duration: TimeInterval
+        let springDamping: CGFloat
+        let initialVelocity: CGFloat
+        
+        if velocityMagnitude > 800 {
+            // 高速滑动，使用更快的动画，可能有轻微回弹
+            duration = 0.3
+            springDamping = 0.5
+            initialVelocity = velocityMagnitude / 1000 // 使用实际速度
+        } else if velocityMagnitude > 400 {
+            // 中速滑动
+            duration = 0.25
+            springDamping = 0.65
+            initialVelocity = velocityMagnitude / 1200
+        } else {
+            // 低速滑动，使用标准动画
+            duration = 0.2
+            springDamping = 0.8
+            initialVelocity = 0.5
+        }
+        
+        // 添加轻微的缩放效果
+        UIView.animate(withDuration: duration, delay: 0, usingSpringWithDamping: springDamping, initialSpringVelocity: initialVelocity, options: .curveEaseOut) {
+            self.thumbButton.center.x = targetX
+            // 轻微的缩放效果
+            self.thumbButton.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+        } completion: { _ in
+            // 恢复原始大小
+            UIView.animate(withDuration: 0.1) {
+                self.thumbButton.transform = .identity
+            }
         }
     }
     
@@ -282,8 +355,6 @@ final class SegmentedSliderControlView: UIView {
     // MARK: - Public Methods
     func setValue(_ value: Int, animated: Bool = true) {
         let clampedValue = max(1, min(maxValue, value))
-        currentValue = clampedValue
-        selectedValue = clampedValue
         
         if animated {
             animateToValue(clampedValue)
@@ -292,11 +363,11 @@ final class SegmentedSliderControlView: UIView {
             thumbButton.center.x = targetX
         }
         
-        updateVisualState()
+        currentValue = clampedValue
     }
     
     func getCurrentValue() -> Int {
-        return selectedValue
+        return currentValue
     }
     
     // MARK: - Layout

@@ -158,12 +158,12 @@ class SegmentedSliderViewController: UIViewController {
 // MARK: - SegmentedSliderControlViewDelegate
 extension SegmentedSliderViewController: SegmentedSliderControlViewDelegate {
     
-    func segmentedSlider(_ slider: SegmentedSliderControlView, didSelectValue value: Int) {
-        updateValueLabel(value)
-        print("滑块选择了值: \(value)")
-    }
-    
     func segmentedSlider(_ slider: SegmentedSliderControlView, didChangeValue value: Int) {
         print("滑块值变化为: \(value)")
+    }
+    
+    func segmentedSlider(_ slider: SegmentedSliderControlView, didSelectValue value: Int) {
+        updateValueLabel(value)
+        print("滑块选择了值: \(value) - 带有惯性效果")
     }
 } 
