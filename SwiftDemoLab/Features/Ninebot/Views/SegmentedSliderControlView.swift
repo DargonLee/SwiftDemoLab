@@ -61,6 +61,7 @@ final class SegmentedSliderControlView: UIView {
     private lazy var thumbButton: UIButton = {
         let button = UIButton(type: .custom)
         button.setImage(UIImage(named: "thumb.icon"), for: .normal)
+//        button.setImage(UIImage(named: "thumb.icon"), for: .highlighted)
         button.layer.cornerRadius = Constants.thumbCornerRadius
         button.layer.borderWidth = Constants.thumbBorderWidth
         button.layer.borderColor = UIColor(hex: "#03DCC2").cgColor
