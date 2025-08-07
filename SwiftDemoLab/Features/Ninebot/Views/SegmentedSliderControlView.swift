@@ -41,6 +41,8 @@ final class SegmentedSliderControlView: UIView {
             if oldValue != currentValue {
                 updateVisualState()
                 delegate?.segmentedSlider(self, didChangeValue: currentValue)
+                // 滑动经过节点时震动反馈
+                HapticFeedbackManager.selectionChanged()
             }
         }
     }
@@ -193,6 +195,9 @@ final class SegmentedSliderControlView: UIView {
         guard let nodeView = gesture.view else { return }
         let tappedValue = nodeView.tag
         
+        // 震动反馈
+        HapticFeedbackManager.lightImpact()
+        
         // 更新当前值
         currentValue = tappedValue
         
@@ -335,6 +340,8 @@ final class SegmentedSliderControlView: UIView {
                            initialSpringVelocity: 0.6,
                            options: [.curveEaseOut, .allowUserInteraction]) {
                 self.thumbButton.center.x = targetX
+            } completion: { _ in
+                HapticFeedbackManager.notification(.success)
             }
         }
     }
