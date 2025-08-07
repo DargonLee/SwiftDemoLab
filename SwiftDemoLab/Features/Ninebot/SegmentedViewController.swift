@@ -23,7 +23,7 @@ class SegmentedViewController: UIViewController {
     }()
     
     private lazy var customSlider: SegmentedSliderControlView = {
-        let slider = SegmentedSliderControlView()
+        let slider = SegmentedSliderControlView(initialValue: 3) // 设置默认值为3
         slider.delegate = self
         return slider
     }()

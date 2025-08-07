@@ -36,7 +36,7 @@ final class SegmentedSliderControlView: UIView {
     // MARK: - Properties
     weak var delegate: SegmentedSliderControlViewDelegate?
     
-    private var currentValue: Int = 2 {
+    private var currentValue: Int = 1 {
         didSet {
             if oldValue != currentValue {
                 updateVisualState()
@@ -45,7 +45,8 @@ final class SegmentedSliderControlView: UIView {
         }
     }
     
-    private let labelTexts: [String] = ["1", "2", "3", "4", "5"]
+    private let labelTexts: [String]
+    private let initialValue: Int
     private var nodeViews: [UIView] = []
     private var labelViews: [UILabel] = []
     private var panGesture: UIPanGestureRecognizer!
@@ -88,18 +89,26 @@ final class SegmentedSliderControlView: UIView {
     }
     
     // MARK: - Initialization
-    init(labelTexts: [String] = ["1", "2", "3", "4", "5"]) {
+    init(labelTexts: [String] = ["1", "2", "3", "4", "5"], initialValue: Int = 1) {
+        self.labelTexts = labelTexts
+        self.initialValue = max(1, min(labelTexts.count, initialValue))
         super.init(frame: .zero)
+        self.currentValue = self.initialValue
         setupUI()
         setupConstraints()
         setupGestures()
+        updateVisualState()
     }
     
     required init?(coder: NSCoder) {
+        self.labelTexts = ["1", "2", "3", "4", "5"]
+        self.initialValue = 1
         super.init(coder: coder)
+        self.currentValue = self.initialValue
         setupUI()
         setupConstraints()
         setupGestures()
+        animateToValue(self.initialValue)
     }
     
     // MARK: - Setup Methods
@@ -132,11 +141,13 @@ final class SegmentedSliderControlView: UIView {
             make.bottom.equalToSuperview()
         }
         
-        thumbButton.snp.makeConstraints { make in
-            make.centerY.equalToSuperview()
-            make.width.height.equalTo(Constants.thumbSize)
-            make.left.equalToSuperview()
-        }
+//        thumbButton.snp.makeConstraints { make in
+//            make.centerY.equalToSuperview()
+//            make.width.height.equalTo(Constants.thumbSize)
+//            make.left.equalToSuperview()
+//        }
+    
+        thumbButton.bounds.size = CGSize(width: Constants.thumbSize, height: Constants.thumbSize)
     }
     
     private func setupGestures() {
@@ -146,12 +157,17 @@ final class SegmentedSliderControlView: UIView {
     
     // MARK: - UI Creation Methods
     private func createNodeViews() {
-        for _ in 0..<maxValue {
+        for index in 0..<maxValue {
             let nodeView = UIView()
             nodeView.backgroundColor = UIColor.systemRed.withAlphaComponent(0.3)
             nodeView.layer.cornerRadius = Constants.nodeCornerRadius
+            nodeView.tag = index + 1 // 使用 tag 来标识节点值
             trackView.addSubview(nodeView)
             nodeViews.append(nodeView)
+            
+            // 添加点击手势
+            let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleNodeTap(_:)))
+            nodeView.addGestureRecognizer(tapGesture)
         }
     }
     
@@ -173,6 +189,20 @@ final class SegmentedSliderControlView: UIView {
     }
     
     // MARK: - Gesture Handling
+    @objc private func handleNodeTap(_ gesture: UITapGestureRecognizer) {
+        guard let nodeView = gesture.view else { return }
+        let tappedValue = nodeView.tag
+        
+        // 更新当前值
+        currentValue = tappedValue
+        
+        // 动画到目标位置
+        animateToValue(tappedValue)
+        
+        // 通知代理
+        delegate?.segmentedSlider(self, didSelectValue: tappedValue)
+    }
+    
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         let translation = gesture.translation(in: self)
         
@@ -284,9 +314,28 @@ final class SegmentedSliderControlView: UIView {
     
     private func animateToValue(_ value: Int) {
         let targetX = calculatePositionFromValue(value)
-        
-        UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0.5, options: .curveEaseOut) {
-            self.thumbButton.center.x = targetX
+        animateToPositionWithOvershoot(targetX)
+    }
+    
+    // MARK: - Animation Helper Methods
+    private func animateToPositionWithOvershoot(_ targetX: CGFloat) {
+        let overshoot: CGFloat = 8   // 超出量，可按需调整
+        let goBeyondX = targetX + (targetX >= thumbButton.center.x ? overshoot : -overshoot)
+
+        UIView.animate(withDuration: 0.18,
+                       delay: 0,
+                       usingSpringWithDamping: 0.85,
+                       initialSpringVelocity: 0.8,
+                       options: [.curveEaseOut, .allowUserInteraction]) {
+            self.thumbButton.center.x = goBeyondX
+        } completion: { _ in
+            UIView.animate(withDuration: 0.22,
+                           delay: 0,
+                           usingSpringWithDamping: 0.7,
+                           initialSpringVelocity: 0.6,
+                           options: [.curveEaseOut, .allowUserInteraction]) {
+                self.thumbButton.center.x = targetX
+            }
         }
     }
     
@@ -317,16 +366,18 @@ final class SegmentedSliderControlView: UIView {
         }
         
         // 添加轻微的缩放效果
-        UIView.animate(withDuration: duration, delay: 0, usingSpringWithDamping: springDamping, initialSpringVelocity: initialVelocity, options: .curveEaseOut) {
-            self.thumbButton.center.x = targetX
-            // 轻微的缩放效果
-            self.thumbButton.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
-        } completion: { _ in
-            // 恢复原始大小
-            UIView.animate(withDuration: 0.1) {
-                self.thumbButton.transform = .identity
-            }
-        }
+//        UIView.animate(withDuration: duration, delay: 0, usingSpringWithDamping: springDamping, initialSpringVelocity: initialVelocity, options: .curveEaseOut) {
+//            self.thumbButton.center.x = targetX
+//            // 轻微的缩放效果
+//            self.thumbButton.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+//        } completion: { _ in
+//            // 恢复原始大小
+//            UIView.animate(withDuration: 0.1) {
+//                self.thumbButton.transform = .identity
+//            }
+//        }
+        
+        animateToPositionWithOvershoot(targetX)
     }
     
     private func calculatePositionFromValue(_ value: Int) -> CGFloat {
@@ -375,6 +426,14 @@ final class SegmentedSliderControlView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         updateNodePositions()
+        
+        // 在首次布局时设置滑块的初始位置
+        if thumbButton.center.x == 0 {
+            let initialPosition = calculatePositionFromValue(currentValue)
+            thumbButton.center.x = initialPosition
+            thumbButton.center.y = trackView.bounds.midY
+            updateVisualState()
+        }
     }
     
     private func updateNodePositions() {
